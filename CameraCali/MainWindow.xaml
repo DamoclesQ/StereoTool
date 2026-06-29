@@ -1,0 +1,147 @@
+<Window x:Class="CameraCali.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:CameraCali.ViewModels"
+        Title="双目相机工具"
+        Width="1100"
+        Height="700"
+        MinWidth="800"
+        MinHeight="500"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        WindowStartupLocation="CenterScreen"
+        mc:Ignorable="d">
+
+    <Window.Resources>
+        <!--  导航按钮样式  -->
+        <Style x:Key="NavButton" TargetType="Button">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Margin" Value="8,4" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#4a5568" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#e8edf2" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!--  选中导航按钮样式  -->
+        <Style x:Key="NavButtonSelected"
+               BasedOn="{StaticResource NavButton}"
+               TargetType="Button">
+            <Setter Property="Background" Value="#4a90d9" />
+            <Setter Property="Foreground" Value="White" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#5ba0e8" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="170" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!--  ═══════════ 左侧导航面板 ═══════════  -->
+        <Border Grid.Column="0"
+                Background="#f7f9fc"
+                BorderBrush="#e2e8f0"
+                BorderThickness="0,0,1,0">
+            <StackPanel Margin="0,12,0,0" VerticalAlignment="Top">
+                <!--  应用标题  -->
+                <StackPanel Orientation="Horizontal" Margin="12,0,12,20">
+                    <TextBlock FontFamily="{StaticResource FASolid}" FontSize="16"
+                               Foreground="#1a202c" Text="&#xf610;" Margin="0,0,8,0"
+                               ToolTip="双目相机标定与测距工具" />
+                    <TextBlock FontSize="16" FontWeight="SemiBold"
+                               Foreground="#1a202c" Text="双目相机工具" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!--  导航按钮  -->
+                <Button Command="{Binding NavigateDistanceCommand}">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
+                                       Text="&#xf545;" Margin="0,0,8,0" />
+                            <TextBlock Text="双目测距" FontSize="13" />
+                        </StackPanel>
+                    </Button.Content>
+                    <Button.Style>
+                        <Style BasedOn="{StaticResource NavButton}" TargetType="Button">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="#4a5568" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedNavItem}" Value="测距">
+                                    <Setter Property="Background" Value="#4a90d9" />
+                                    <Setter Property="Foreground" Value="White" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button Command="{Binding NavigateCalibrationCommand}">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
+                                       Text="&#xf030;" Margin="0,0,8,0" />
+                            <TextBlock Text="双目标定" FontSize="13" />
+                        </StackPanel>
+                    </Button.Content>
+                    <Button.Style>
+                        <Style BasedOn="{StaticResource NavButton}" TargetType="Button">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="#4a5568" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedNavItem}" Value="标定">
+                                    <Setter Property="Background" Value="#4a90d9" />
+                                    <Setter Property="Foreground" Value="White" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!--  版本信息（底部）  -->
+                <TextBlock Margin="12,40,0,0"
+                           FontSize="11"
+                           Foreground="#a0aec0"
+                           Text="v1.0.0" />
+            </StackPanel>
+        </Border>
+
+        <!--  ═══════════ 分隔线 ═══════════  -->
+        <Rectangle Grid.Column="1"
+                   Width="1"
+                   HorizontalAlignment="Stretch"
+                   Fill="#e2e8f0" />
+
+        <!--  ═══════════ 右侧页面容器 ═══════════  -->
+        <Frame x:Name="MainFrame"
+               Grid.Column="2"
+               Margin="0"
+               NavigationUIVisibility="Hidden" />
+    </Grid>
+</Window>
