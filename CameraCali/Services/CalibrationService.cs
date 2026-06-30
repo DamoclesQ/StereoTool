@@ -314,6 +314,85 @@ public class CalibrationService
     }
 
     /// <summary>
+    /// 从已缓存的角点检测结果执行单目相机标定（仅标定单个相机，不涉及双目外参）。
+    /// </summary>
+    /// <param name="cornersList">每张标定图像已检测的角点坐标列表。</param>
+    /// <param name="config">棋盘格标定板配置参数（内角点数、格子物理尺寸）。</param>
+    /// <param name="imageSize">标定图像的像素尺寸（所有图像必须一致）。</param>
+    /// <param name="progress">进度报告器（0→50→100）。可传 null 忽略。</param>
+    /// <param name="ct">协作取消令牌。</param>
+    /// <returns>
+    /// 包含相机内参矩阵和畸变系数的标定结果。
+    /// 仅填充 LeftCameraMatrix 和 LeftDistCoeffs 字段，
+    /// 右相机和外参相关字段均为空数组。
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// cornersList 有效数量少于 3 时抛出——单目标定至少需要 3 张有效图片。
+    /// </exception>
+    public async Task<CalibrationResult> CalibrateMonoFromCachedAsync(
+        List<Point2f[]> cornersList,
+        ChessboardConfig config,
+        Size imageSize,
+        IProgress<int>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (cornersList.Count < 3)
+            throw new InvalidOperationException(
+                $"至少需要 3 张有效图片进行单目标定，当前仅 {cornersList.Count} 张。");
+
+        return await Task.Run(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(0);
+
+            int validCount = cornersList.Count;
+
+            // ── 阶段 1：构建棋盘格世界坐标 ──
+            var objectPointsList = BuildObjectPointsList(config, validCount);
+
+            // ── 阶段 2：将点集转换为 Mat 数组 ──
+            var objMats = objectPointsList.Select(pts => Point3fListToMat(pts)).ToArray();
+            var imgMats = cornersList.Select(pts => Point2fArrayToMat(pts)).ToArray();
+
+            // ── 阶段 3：单相机标定（仅调用 CalibrateCamera） ──
+            var camMat = Mat.Eye(3, 3, MatType.CV_64FC1).ToMat();
+            var distCoeffs = Mat.Zeros(5, 1, MatType.CV_64FC1).ToMat();
+
+            double rms = Cv2.CalibrateCamera(objMats, imgMats, imageSize,
+                camMat, distCoeffs, out var rvecs, out var tvecs);
+            progress?.Report(50);
+
+            // 清理单目标定的中间结果（外参向量，单目标定不需要保留）
+            foreach (var rv in rvecs) rv.Dispose();
+            foreach (var tv in tvecs) tv.Dispose();
+            progress?.Report(100);
+
+            // ── 阶段 4：封装结果 —— 仅填充左相机字段，右相机和外参保持空数组 ──
+            var result = new CalibrationResult
+            {
+                LeftCameraMatrix = MatToArray2D(camMat),
+                LeftDistCoeffs = MatToArray1D(distCoeffs),
+                RightCameraMatrix = [],
+                RightDistCoeffs = [],
+                RotationMatrix = [],
+                TranslationVector = [],
+                ImageWidth = imageSize.Width,
+                ImageHeight = imageSize.Height,
+                SkippedPairCount = 0,
+                ReprojectionError = rms
+            };
+
+            // 释放所有临时 Mat 对象
+            camMat.Dispose();
+            distCoeffs.Dispose();
+            foreach (var m in objMats) m.Dispose();
+            foreach (var m in imgMats) m.Dispose();
+
+            return result;
+        }, ct);
+    }
+
+    /// <summary>
     /// 将标定结果写入 OpenCV YAML 文件。
     /// </summary>
     /// <param name="filePath">目标文件路径（扩展名建议 .yaml 或 .yml）。如果父目录不存在则自动创建。</param>

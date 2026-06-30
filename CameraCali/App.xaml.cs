@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using CameraCali.Services;
 using CameraCali.ViewModels;
 using CameraCali.Views;
@@ -53,6 +53,8 @@ public partial class App : Application
         // 页面 ViewModel 为 Transient（每次导航获得新实例，适合页面间独立状态）
         services.AddSingleton<CalibrationViewModel>();
         services.AddSingleton<DistanceViewModel>();
+        services.AddSingleton<MonoCalibrationViewModel>();
+        services.AddSingleton<MonoCalibrationPage>();
 
         // ── 注册 View（Page / Window） ──
         services.AddSingleton<CalibrationPage>();

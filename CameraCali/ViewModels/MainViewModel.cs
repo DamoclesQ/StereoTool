@@ -21,12 +21,12 @@ public partial class MainViewModel : ObservableObject
     /// <summary>当前显示的页面对象，用于 Frame 绑定</summary>
     [ObservableProperty]
     private object? _currentPage;
-    /// <summary>当前选中的导航项标识（"标定" 或 "测距"），用于导航按钮高亮</summary>
+    /// <summary>当前选中的导航项标识（"标定"、"测距" 或 "单目标定"），用于导航按钮高亮</summary>
     [ObservableProperty]
     private string _selectedNavItem = "测距";
 
 
-    /// <summary>导航请求事件，参数为页面标识（"Calibration" 或 "Distance"）</summary>
+    /// <summary>导航请求事件，参数为页面标识（"Calibration"、"Distance" 或 "MonoCalibration"）</summary>
     public event Action<string>? NavigateRequested;
 
     // ═══════════════════════════════════════════════
@@ -71,5 +71,17 @@ public partial class MainViewModel : ObservableObject
         var page = _serviceProvider.GetService<DistancePage>();
         CurrentPage = page;
         NavigateRequested?.Invoke("Distance");
+    }
+
+    /// <summary>
+    /// 导航到单目标定页面。
+    /// </summary>
+    [RelayCommand]
+    private void NavigateMonoCalibration()
+    {
+        SelectedNavItem = "单目标定";
+        var page = _serviceProvider.GetService<MonoCalibrationPage>();
+        CurrentPage = page;
+        NavigateRequested?.Invoke("MonoCalibration");
     }
 }

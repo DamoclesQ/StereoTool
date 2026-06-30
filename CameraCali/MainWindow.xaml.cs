@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         {
             "Distance" => _serviceProvider.GetRequiredService<DistancePage>(),
             "Calibration" => _serviceProvider.GetRequiredService<CalibrationPage>(),
+             "MonoCalibration" => _serviceProvider.GetRequiredService<MonoCalibrationPage>(),
             _ => throw new ArgumentException($"未知页面: {pageName}", nameof(pageName))
         };
 

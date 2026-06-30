@@ -124,6 +124,28 @@
                     </Button.Style>
                 </Button>
 
+                 <Button Command="{Binding NavigateMonoCalibrationCommand}">
+                     <Button.Content>
+                         <StackPanel Orientation="Horizontal">
+                             <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
+                                        Text="&#xf030;" Margin="0,0,8,0" />
+                             <TextBlock Text="单目标定" FontSize="13" />
+                         </StackPanel>
+                     </Button.Content>
+                     <Button.Style>
+                         <Style BasedOn="{StaticResource NavButton}" TargetType="Button">
+                             <Setter Property="Background" Value="Transparent" />
+                             <Setter Property="Foreground" Value="#4a5568" />
+                             <Style.Triggers>
+                                 <DataTrigger Binding="{Binding SelectedNavItem}" Value="单目标定">
+                                     <Setter Property="Background" Value="#4a90d9" />
+                                     <Setter Property="Foreground" Value="White" />
+                                 </DataTrigger>
+                             </Style.Triggers>
+                         </Style>
+                     </Button.Style>
+                 </Button>
+
                 <!--  版本信息（底部）  -->
                 <TextBlock Margin="12,40,0,0"
                            FontSize="11"
