@@ -414,6 +414,24 @@ public partial class CalibrationViewModel : ObservableObject
         }
     }
 
+    /// <summary>清空所有标定相关数据，用于重新导入图片并标定</summary>
+    [RelayCommand]
+    private void ClearData()
+    {
+        ValidPairs.Clear();
+        LeftPendingPaths.Clear();
+        RightPendingPaths.Clear();
+        CalibrationResult = null;
+        SelectedPair = null;
+        LeftPreviewImage = null;
+        RightPreviewImage = null;
+        SkippedCount = 0;
+        ProgressValue = 0;
+        OnPropertyChanged(nameof(LeftPendingCount));
+        OnPropertyChanged(nameof(RightPendingCount));
+        StatusText = "数据已清空，请重新导入左右图片并开始标定";
+    }
+
     [RelayCommand]
     private void LoadCalibrationFile()
     {
