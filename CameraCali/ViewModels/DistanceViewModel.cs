@@ -5,6 +5,7 @@ using CameraCali.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using OpenCvSharp;
 
 namespace CameraCali.ViewModels;
 
@@ -36,7 +37,7 @@ public partial class DistanceViewModel : ObservableObject
     /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
     [ObservableProperty] private System.Drawing.Point _selectedPoint;
 
-    /// <summary>测距结果（单位：米）</summary>
+    /// <summary>测距结果（单位：）</summary>
     [ObservableProperty] private double _distanceResult;
 
     /// <summary>是否已有有效的测距结果（用于 UI 显示/隐藏结果行）</summary>
@@ -294,29 +295,11 @@ public partial class DistanceViewModel : ObservableObject
     private async Task MeasureDistanceAsync(CancellationToken ct)
     {
         // ── 前置条件校验 ──
-        if (LoadedCalibration == null)
-        {
-            StatusText = "错误：请先加载标定结果文件";
-            return;
-        }
-
-        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath))
-        {
-            StatusText = "错误：请先导入左右相机图像";
-            return;
-        }
-
-        if (!File.Exists(LeftImagePath))
-        {
-            StatusText = "错误：左图像文件不存在";
-            return;
-        }
-
-        if (!File.Exists(RightImagePath))
-        {
-            StatusText = "错误：右图像文件不存在";
-            return;
-        }
+        if (LoadedCalibration == null) { StatusText = "错误：请先加载标定结果文件"; return; }
+        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath)) 
+        { StatusText = "错误：请先导入左右相机图像"; return; }
+        if (!File.Exists(LeftImagePath)) { StatusText = "错误：左图像文件不存在"; return; }
+        if (!File.Exists(RightImagePath)) { StatusText = "错误：右图像文件不存在"; return; }
 
         // ── 执行测距 ──
         IsBusy = true;
@@ -324,14 +307,10 @@ public partial class DistanceViewModel : ObservableObject
 
         try
         {
-            DistanceResult = await _distanceService.MeasureDistanceAsync(
-                LeftImagePath,
-                RightImagePath,
-                LoadedCalibration,
-                SelectedPoint);
+            DistanceResult = await _distanceService.MeasureDistanceAsync(LeftImagePath, RightImagePath, LoadedCalibration, new Point2f(SelectedPoint.X, SelectedPoint.Y));
 
             HasDistanceResult = true;
-            StatusText = $"测量完成！像素 ({SelectedPoint.X}, {SelectedPoint.Y}) 的距离：{DistanceResult:F4} 米";
+            StatusText = $"测量完成！像素 ({SelectedPoint.X}, {SelectedPoint.Y}) 的距离：{DistanceResult:F2} mm";
         }
         catch (OperationCanceledException)
         {
@@ -355,10 +334,7 @@ public partial class DistanceViewModel : ObservableObject
     [RelayCommand(IncludeCancelCommand = true)]
     private async Task MeasureManualDistanceAsync(CancellationToken ct)
     {
-        if (LoadedCalibration == null)
-        { StatusText = "错误：请先加载标定结果文件"; return; }
-        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath))
-        { StatusText = "错误：请先导入左右相机图像"; return; }
+        if (LoadedCalibration == null) { StatusText = "错误：请先加载标定结果文件"; return; }
         if (!int.TryParse(ManualLeftX, out int lx) || !int.TryParse(ManualLeftY, out int ly))
         { StatusText = "错误：左图坐标格式无效，请输入整数值"; return; }
         if (!int.TryParse(ManualRightX, out int rx) || !int.TryParse(ManualRightY, out int ry))
@@ -369,16 +345,13 @@ public partial class DistanceViewModel : ObservableObject
 
         try
         {
-            DistanceResult = await _distanceService.MeasureDistanceFromPointsAsync(
-                LeftImagePath, RightImagePath, LoadedCalibration,
-                new System.Drawing.Point(lx, ly),
-                new System.Drawing.Point(rx, ry));
+            DistanceResult = await _distanceService.MeasureDistanceFromPointsAsync(LoadedCalibration, new Point2f(lx, ly), new Point2f(rx, ry));
 
             HasDistanceResult = true;
             if (double.IsNaN(DistanceResult))
                 StatusText = "测量失败：无法计算距离（可能对应点不在有效视差范围内或越界）";
             else
-                StatusText = $"手动测量完成！({lx},{ly})→({rx},{ry}) 距离：{DistanceResult:F4} 米";
+                StatusText = $"手动测量完成！({lx},{ly})→({rx},{ry}) 距离：{DistanceResult:F2} mm";
         }
         catch (System.Exception ex)
         { StatusText = $"测量失败：{ex.Message}"; HasDistanceResult = false; }

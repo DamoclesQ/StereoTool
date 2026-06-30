@@ -260,10 +260,8 @@ public partial class CalibrationViewModel : ObservableObject
 
                 for (int i = 0; i < pairCount; i++)
                 {
-                    bool leftOk = _calibrationService.TryDetectCorners(
-                        leftPaths[i], ChessboardConfig, out var leftCorners, out var leftSize);
-                    bool rightOk = _calibrationService.TryDetectCorners(
-                        rightPaths[i], ChessboardConfig, out var rightCorners, out var rightSize);
+                    bool leftOk = _calibrationService.TryDetectCorners(leftPaths[i], ChessboardConfig, out var leftCorners, out var leftSize);
+                    bool rightOk = _calibrationService.TryDetectCorners(rightPaths[i], ChessboardConfig, out var rightCorners, out var rightSize);
 
                     if (leftOk && rightOk)
                     {
