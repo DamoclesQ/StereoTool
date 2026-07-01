@@ -1,6 +1,6 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows.Media.Imaging;
-using CameraCali.Models;
+using CameraCalibrator.Models;
 using CameraCali.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,7 +32,7 @@ public partial class DistanceViewModel : ObservableObject
     [ObservableProperty] private string _rightImagePath = string.Empty;
 
     /// <summary>已加载的标定结果对象</summary>
-    [ObservableProperty] private CalibrationResult? _loadedCalibration;
+    [ObservableProperty] private StereoParameters? _loadedCalibration;
 
     /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
     [ObservableProperty] private System.Drawing.Point _selectedPoint;
@@ -94,74 +94,16 @@ public partial class DistanceViewModel : ObservableObject
 
     public bool HasCalibration => LoadedCalibration != null;
 
-    // ── 内参：左相机 ──
-    public string LeftFx => LoadedCalibration != null ? $"{LoadedCalibration.LeftCameraMatrix[0][0]:F2}" : "--";
-    public string LeftFy => LoadedCalibration != null ? $"{LoadedCalibration.LeftCameraMatrix[1][1]:F2}" : "--";
-    public string LeftCx => LoadedCalibration != null ? $"{LoadedCalibration.LeftCameraMatrix[0][2]:F2}" : "--";
-    public string LeftCy => LoadedCalibration != null ? $"{LoadedCalibration.LeftCameraMatrix[1][2]:F2}" : "--";
-
-    // ── 内参：右相机 ──
-    public string RightFx => LoadedCalibration != null ? $"{LoadedCalibration.RightCameraMatrix[0][0]:F2}" : "--";
-    public string RightFy => LoadedCalibration != null ? $"{LoadedCalibration.RightCameraMatrix[1][1]:F2}" : "--";
-    public string RightCx => LoadedCalibration != null ? $"{LoadedCalibration.RightCameraMatrix[0][2]:F2}" : "--";
-    public string RightCy => LoadedCalibration != null ? $"{LoadedCalibration.RightCameraMatrix[1][2]:F2}" : "--";
-
-    // ── 畸变：左相机 ──
-    public string LeftK1 => LoadedCalibration != null ? $"{LoadedCalibration.LeftDistCoeffs[0]:F6}" : "--";
-    public string LeftK2 => LoadedCalibration != null ? $"{LoadedCalibration.LeftDistCoeffs[1]:F6}" : "--";
-    public string LeftP1 => LoadedCalibration != null ? $"{LoadedCalibration.LeftDistCoeffs[2]:F6}" : "--";
-    public string LeftP2 => LoadedCalibration != null ? $"{LoadedCalibration.LeftDistCoeffs[3]:F6}" : "--";
-    public string LeftK3 => LoadedCalibration != null ? $"{LoadedCalibration.LeftDistCoeffs[4]:F6}" : "--";
-
-    // ── 畸变：右相机 ──
-    public string RightK1 => LoadedCalibration != null ? $"{LoadedCalibration.RightDistCoeffs[0]:F6}" : "--";
-    public string RightK2 => LoadedCalibration != null ? $"{LoadedCalibration.RightDistCoeffs[1]:F6}" : "--";
-    public string RightP1 => LoadedCalibration != null ? $"{LoadedCalibration.RightDistCoeffs[2]:F6}" : "--";
-    public string RightP2 => LoadedCalibration != null ? $"{LoadedCalibration.RightDistCoeffs[3]:F6}" : "--";
-    public string RightK3 => LoadedCalibration != null ? $"{LoadedCalibration.RightDistCoeffs[4]:F6}" : "--";
-
-    // ── 外参：旋转矩阵 R (3×3) ──
-    public string R11 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[0][0]:F6}" : "--";
-    public string R12 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[0][1]:F6}" : "--";
-    public string R13 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[0][2]:F6}" : "--";
-    public string R21 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[1][0]:F6}" : "--";
-    public string R22 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[1][1]:F6}" : "--";
-    public string R23 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[1][2]:F6}" : "--";
-    public string R31 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[2][0]:F6}" : "--";
-    public string R32 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[2][1]:F6}" : "--";
-    public string R33 => LoadedCalibration != null ? $"{LoadedCalibration.RotationMatrix[2][2]:F6}" : "--";
-
-    // ── 外参：平移向量 T ──
-    public string Tx => LoadedCalibration != null ? $"{LoadedCalibration.TranslationVector[0]:F4}" : "--";
-    public string Ty => LoadedCalibration != null ? $"{LoadedCalibration.TranslationVector[1]:F4}" : "--";
-    public string Tz => LoadedCalibration != null ? $"{LoadedCalibration.TranslationVector[2]:F4}" : "--";
+    // ── 内参/畸变/外参的派生属性已由 StereoParameters 内置提供，通过 LoadedCalibration 访问 ──
 
     /// <summary>重投影误差显示</summary>
     public string ReprojectionErrorDisplay => LoadedCalibration != null
         ? $"{LoadedCalibration.ReprojectionError:F4} 像素" : "--";
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnLoadedCalibrationChanged(CalibrationResult? value)
+    partial void OnLoadedCalibrationChanged(StereoParameters? value)
     {
         OnPropertyChanged(nameof(HasCalibration));
-
-        OnPropertyChanged(nameof(LeftFx)); OnPropertyChanged(nameof(LeftFy));
-        OnPropertyChanged(nameof(LeftCx)); OnPropertyChanged(nameof(LeftCy));
-        OnPropertyChanged(nameof(RightFx)); OnPropertyChanged(nameof(RightFy));
-        OnPropertyChanged(nameof(RightCx)); OnPropertyChanged(nameof(RightCy));
-
-        OnPropertyChanged(nameof(LeftK1)); OnPropertyChanged(nameof(LeftK2));
-        OnPropertyChanged(nameof(LeftP1)); OnPropertyChanged(nameof(LeftP2)); OnPropertyChanged(nameof(LeftK3));
-
-        OnPropertyChanged(nameof(RightK1)); OnPropertyChanged(nameof(RightK2));
-        OnPropertyChanged(nameof(RightP1)); OnPropertyChanged(nameof(RightP2)); OnPropertyChanged(nameof(RightK3));
-
-        OnPropertyChanged(nameof(R11)); OnPropertyChanged(nameof(R12)); OnPropertyChanged(nameof(R13));
-        OnPropertyChanged(nameof(R21)); OnPropertyChanged(nameof(R22)); OnPropertyChanged(nameof(R23));
-        OnPropertyChanged(nameof(R31)); OnPropertyChanged(nameof(R32)); OnPropertyChanged(nameof(R33));
-
-        OnPropertyChanged(nameof(Tx)); OnPropertyChanged(nameof(Ty)); OnPropertyChanged(nameof(Tz));
-
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
     }
 

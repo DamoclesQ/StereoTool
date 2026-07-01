@@ -1,7 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Media.Imaging;
-using CameraCali.Models;
+using CameraCalibrator.Models;
 using CameraCali.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -53,7 +53,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
 
     /// <summary>标定完成后的结果对象</summary>
     [ObservableProperty]
-    private CalibrationResult? _calibrationResult;
+    private CameraParameters? _calibrationResult;
 
     /// <summary>标定进度值（0-100）</summary>
     [ObservableProperty]
@@ -83,57 +83,23 @@ public partial class MonoCalibrationViewModel : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>物理焦距（mm），由 fx × 像元尺寸 / 1000 计算得出</summary>
-    public string FocalMm => CalibrationResult != null && ChessboardConfig.PixelSizeUm > 0
-        ? $"{CalibrationResult.LeftCameraMatrix[0][0] * ChessboardConfig.PixelSizeUm / 1000.0:F2}" : "--";
-    /// <summary>X 方向焦距（像素）</summary>
-    public string Fx => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[0][0]:F2}" : "--";
-    /// <summary>Y 方向焦距（像素）</summary>
-    public string Fy => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[1][1]:F2}" : "--";
-    /// <summary>主点 X 坐标（像素）</summary>
-    public string Cx => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[0][2]:F2}" : "--";
-    /// <summary>主点 Y 坐标（像素）</summary>
-    public string Cy => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[1][2]:F2}" : "--";
-    /// <summary>是否已有标定结果</summary>
+    public string FocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.CameraMatrix[0][0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
+    // ── Fx/Fy/Cx/Cy/K1/K2/P1/P2/K3 派生属性已由 CameraParameters 内置提供 ──
     public bool HasCalibrationResult => CalibrationResult != null;
-    /// <summary>重投影误差显示文本</summary>
     public string ReprojectionErrorDisplay => CalibrationResult != null
         ? $"{CalibrationResult.ReprojectionError:F4} 像素" : "--";
-
-    // ── 畸变系数 ──
-    /// <summary>二阶径向畸变系数 k1</summary>
-    public string K1 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[0]:F6}" : "--";
-    /// <summary>四阶径向畸变系数 k2</summary>
-    public string K2 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[1]:F6}" : "--";
-    /// <summary>一阶切向畸变系数 p1</summary>
-    public string P1 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[2]:F6}" : "--";
-    /// <summary>二阶切向畸变系数 p2</summary>
-    public string P2 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[3]:F6}" : "--";
-    /// <summary>六阶径向畸变系数 k3</summary>
-    public string K3 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[4]:F6}" : "--";
 
     // ═══════════════════════════════════════════════
     //  属性变更回调
     // ═══════════════════════════════════════════════
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(CalibrationResult? value)
+    partial void OnCalibrationResultChanged(CameraParameters? value)
     {
-        OnPropertyChanged(nameof(Fx));
-        OnPropertyChanged(nameof(Fy));
-        OnPropertyChanged(nameof(Cx));
-        OnPropertyChanged(nameof(Cy));
         OnPropertyChanged(nameof(FocalMm));
         OnPropertyChanged(nameof(HasCalibrationResult));
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
-        OnPropertyChanged(nameof(K1));
-        OnPropertyChanged(nameof(K2));
-        OnPropertyChanged(nameof(P1));
-        OnPropertyChanged(nameof(P2));
-        OnPropertyChanged(nameof(K3));
     }
 
     /// <summary>棋盘格配置变化时，清空所有角点缓存</summary>
@@ -156,7 +122,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
             return;
         }
         // 使用棋盘格内角点数构建 Size（列数, 行数）
-        var patternSize = new Size(ChessboardConfig.PatternWidth, ChessboardConfig.PatternHeight);
+        var patternSize = new Size(ChessboardConfig.CornerCols, ChessboardConfig.CornerRows);
         PreviewImage = DrawCornersPreview(value.ImagePath, value.Corners, patternSize);
     }
 
@@ -360,7 +326,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
 
         try
         {
-            _calibrationService.SaveCalibrationResult(dialog.FileName, CalibrationResult);
+            _calibrationService.SaveCameraParameters(dialog.FileName, CalibrationResult);
             StatusText = $"标定结果已保存至：{dialog.FileName}";
         }
         catch (System.Exception ex)
@@ -385,7 +351,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
 
         try
         {
-            CalibrationResult = _calibrationService.LoadCalibrationResult(dialog.FileName);
+            CalibrationResult = _calibrationService.LoadCameraParameters(dialog.FileName);
             StatusText = $"已加载标定结果：{Path.GetFileName(dialog.FileName)}";
         }
         catch (System.Exception ex)

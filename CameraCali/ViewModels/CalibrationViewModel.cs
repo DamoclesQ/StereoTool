@@ -1,7 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Media.Imaging;
-using CameraCali.Models;
+using CameraCalibrator.Models;
 using CameraCali.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -56,7 +56,7 @@ public partial class CalibrationViewModel : ObservableObject
 
     /// <summary>标定完成后的结果对象</summary>
     [ObservableProperty]
-    private CalibrationResult? _calibrationResult;
+    private StereoParameters? _calibrationResult;
 
     /// <summary>标定进度值（0-100）</summary>
     [ObservableProperty]
@@ -92,81 +92,23 @@ public partial class CalibrationViewModel : ObservableObject
     //  派生属性 — 焦距/主点显示
     // ═══════════════════════════════════════════════
 
-    public string LeftFocalMm => CalibrationResult != null && ChessboardConfig.PixelSizeUm > 0
-        ? $"{CalibrationResult.LeftCameraMatrix[0][0] * ChessboardConfig.PixelSizeUm / 1000.0:F2}" : "--";
-    public string RightFocalMm => CalibrationResult != null && ChessboardConfig.PixelSizeUm > 0
-        ? $"{CalibrationResult.RightCameraMatrix[0][0] * ChessboardConfig.PixelSizeUm / 1000.0:F2}" : "--";
-    public string LeftFx => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[0][0]:F2}" : "--";
-    public string LeftFy => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[1][1]:F2}" : "--";
-    public string LeftCx => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[0][2]:F2}" : "--";
-    public string LeftCy => CalibrationResult != null
-        ? $"{CalibrationResult.LeftCameraMatrix[1][2]:F2}" : "--";
-    public string RightFx => CalibrationResult != null
-        ? $"{CalibrationResult.RightCameraMatrix[0][0]:F2}" : "--";
-    public string RightFy => CalibrationResult != null
-        ? $"{CalibrationResult.RightCameraMatrix[1][1]:F2}" : "--";
-    public string RightCx => CalibrationResult != null
-        ? $"{CalibrationResult.RightCameraMatrix[0][2]:F2}" : "--";
-    public string RightCy => CalibrationResult != null
-        ? $"{CalibrationResult.RightCameraMatrix[1][2]:F2}" : "--";
+    public string LeftFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.LeftCameraMatrix[0][0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
+    public string RightFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.RightCameraMatrix[0][0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
     public bool HasCalibrationResult => CalibrationResult != null;
     public string ReprojectionErrorDisplay => CalibrationResult != null
         ? $"{CalibrationResult.ReprojectionError:F4} 像素" : "--";
 
-    // ── 外参：旋转矩阵 R (3×3) ──
-    public string R11 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[0][0]:F6}" : "--";
-    public string R12 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[0][1]:F6}" : "--";
-    public string R13 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[0][2]:F6}" : "--";
-    public string R21 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[1][0]:F6}" : "--";
-    public string R22 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[1][1]:F6}" : "--";
-    public string R23 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[1][2]:F6}" : "--";
-    public string R31 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[2][0]:F6}" : "--";
-    public string R32 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[2][1]:F6}" : "--";
-    public string R33 => CalibrationResult != null ? $"{CalibrationResult.RotationMatrix[2][2]:F6}" : "--";
-
-    // ── 外参：平移向量 T (3×1, 单位 mm) ──
-    public string Tx => CalibrationResult != null ? $"{CalibrationResult.TranslationVector[0]:F4}" : "--";
-    public string Ty => CalibrationResult != null ? $"{CalibrationResult.TranslationVector[1]:F4}" : "--";
-    public string Tz => CalibrationResult != null ? $"{CalibrationResult.TranslationVector[2]:F4}" : "--";
-
-    // ── 畸变系数：左相机 (k1, k2, p1, p2, k3) ──
-    public string LeftK1 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[0]:F6}" : "--";
-    public string LeftK2 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[1]:F6}" : "--";
-    public string LeftP1 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[2]:F6}" : "--";
-    public string LeftP2 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[3]:F6}" : "--";
-    public string LeftK3 => CalibrationResult != null ? $"{CalibrationResult.LeftDistCoeffs[4]:F6}" : "--";
-
-    // ── 畸变系数：右相机 (k1, k2, p1, p2, k3) ──
-    public string RightK1 => CalibrationResult != null ? $"{CalibrationResult.RightDistCoeffs[0]:F6}" : "--";
-    public string RightK2 => CalibrationResult != null ? $"{CalibrationResult.RightDistCoeffs[1]:F6}" : "--";
-    public string RightP1 => CalibrationResult != null ? $"{CalibrationResult.RightDistCoeffs[2]:F6}" : "--";
-    public string RightP2 => CalibrationResult != null ? $"{CalibrationResult.RightDistCoeffs[3]:F6}" : "--";
-    public string RightK3 => CalibrationResult != null ? $"{CalibrationResult.RightDistCoeffs[4]:F6}" : "--";
+    // ── 外参/畸变的派生属性已由 StereoParameters 内置提供 ──
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(CalibrationResult? value)
+    partial void OnCalibrationResultChanged(StereoParameters? value)
     {
-        OnPropertyChanged(nameof(LeftFx));
-        OnPropertyChanged(nameof(LeftFy));
-        OnPropertyChanged(nameof(LeftCx));
-        OnPropertyChanged(nameof(LeftCy));
-        OnPropertyChanged(nameof(RightFx));
-        OnPropertyChanged(nameof(RightFy));
-        OnPropertyChanged(nameof(RightCx));
-        OnPropertyChanged(nameof(RightCy));
         OnPropertyChanged(nameof(LeftFocalMm));
         OnPropertyChanged(nameof(RightFocalMm));
         OnPropertyChanged(nameof(HasCalibrationResult));
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
-        OnPropertyChanged(nameof(R11)); OnPropertyChanged(nameof(R12)); OnPropertyChanged(nameof(R13));
-        OnPropertyChanged(nameof(R21)); OnPropertyChanged(nameof(R22)); OnPropertyChanged(nameof(R23));
-        OnPropertyChanged(nameof(R31)); OnPropertyChanged(nameof(R32)); OnPropertyChanged(nameof(R33));
-        OnPropertyChanged(nameof(Tx)); OnPropertyChanged(nameof(Ty)); OnPropertyChanged(nameof(Tz));
-        OnPropertyChanged(nameof(LeftK1)); OnPropertyChanged(nameof(LeftK2)); OnPropertyChanged(nameof(LeftP1)); OnPropertyChanged(nameof(LeftP2)); OnPropertyChanged(nameof(LeftK3));
-        OnPropertyChanged(nameof(RightK1)); OnPropertyChanged(nameof(RightK2)); OnPropertyChanged(nameof(RightP1)); OnPropertyChanged(nameof(RightP2)); OnPropertyChanged(nameof(RightK3));
     }
 
     /// <summary>棋盘格配置变化时，清空所有角点缓存</summary>
@@ -192,7 +134,7 @@ public partial class CalibrationViewModel : ObservableObject
             return;
         }
         // 使用棋盘格内角点数构建 Size（列数, 行数）
-        var patternSize = new OpenCvSharp.Size(ChessboardConfig.PatternWidth, ChessboardConfig.PatternHeight);
+        var patternSize = new OpenCvSharp.Size(ChessboardConfig.CornerCols, ChessboardConfig.CornerRows);
         LeftPreviewImage = DrawCornersPreview(value.LeftPath, value.LeftCorners, patternSize);
         RightPreviewImage = DrawCornersPreview(value.RightPath, value.RightCorners, patternSize);
     }

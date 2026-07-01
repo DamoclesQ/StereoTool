@@ -1,0 +1,39 @@
+%YAML:1.0
+---
+LeftCameraMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 898.03382765762501, 0., 306.43154550588991, 0.,
+       907.54041967947239, 239.53621486896486, 0., 0., 1. ]
+RightCameraMatrix: !!opencv-matrix
+   rows: 0
+   cols: 0
+   dt: d
+   data: []
+LeftDistCoeffs: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ -0.42806936475705015, 0.18325147104273032,
+       -0.00013801000644717698, -0.0010409551907009473,
+       1.0772844218876378 ]
+RightDistCoeffs: !!opencv-matrix
+   rows: 0
+   cols: 1
+   dt: d
+   data: []
+RotationMatrix: !!opencv-matrix
+   rows: 0
+   cols: 0
+   dt: d
+   data: []
+TranslationVector: !!opencv-matrix
+   rows: 0
+   cols: 1
+   dt: d
+   data: []
+ImageWidth: 640
+ImageHeight: 480
+SkippedPairCount: 0
+ReprojectionError: 0.28075520724898029

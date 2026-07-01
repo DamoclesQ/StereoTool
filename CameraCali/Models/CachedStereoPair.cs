@@ -2,7 +2,7 @@
 using OpenCvSharp;
 using System.IO;
 
-namespace CameraCali.Models;
+namespace CameraCalibrator.Models;
 
 /// <summary>
 /// 已缓存角点检测结果的立体图片对。

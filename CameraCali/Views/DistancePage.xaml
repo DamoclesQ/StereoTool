@@ -130,7 +130,7 @@
                                                 <TextBlock HorizontalAlignment="Center"
                                                            FontFamily="Consolas"
                                                            FontSize="11"
-                                                           Text="{Binding LeftFx, StringFormat='fx:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.LeftFx, StringFormat='fx:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="0"
                                                     Grid.Column="1"
@@ -154,7 +154,7 @@
                                                            FontFamily="Consolas"
                                                            FontSize="11"
                                                            Foreground="#E65100"
-                                                           Text="{Binding LeftCx, StringFormat='Cx:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.LeftCx, StringFormat='Cx:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="1"
                                                     Grid.Column="0"
@@ -177,7 +177,7 @@
                                                 <TextBlock HorizontalAlignment="Center"
                                                            FontFamily="Consolas"
                                                            FontSize="11"
-                                                           Text="{Binding LeftFy, StringFormat='fy:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.LeftFy, StringFormat='fy:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="1"
                                                     Grid.Column="2"
@@ -189,7 +189,7 @@
                                                            FontFamily="Consolas"
                                                            FontSize="11"
                                                            Foreground="#E65100"
-                                                           Text="{Binding LeftCy, StringFormat='Cy:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.LeftCy, StringFormat='Cy:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="2"
                                                     Grid.Column="0"
@@ -249,27 +249,27 @@
                                                        Grid.Column="0"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding LeftK1, StringFormat='K1 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.LeftK1, StringFormat='K1 = {0}'}" />
                                             <TextBlock Grid.Row="0"
                                                        Grid.Column="1"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding LeftK2, StringFormat='K2 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.LeftK2, StringFormat='K2 = {0}'}" />
                                             <TextBlock Grid.Row="0"
                                                        Grid.Column="2"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding LeftK3, StringFormat='k3 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.LeftK3, StringFormat='k3 = {0}'}" />
                                             <TextBlock Grid.Row="1"
                                                        Grid.Column="0"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding LeftP1, StringFormat='P1 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.LeftP1, StringFormat='P1 = {0}'}" />
                                             <TextBlock Grid.Row="1"
                                                        Grid.Column="1"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding LeftP2, StringFormat='P2 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.LeftP2, StringFormat='P2 = {0}'}" />
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -319,7 +319,7 @@
                                                 <TextBlock HorizontalAlignment="Center"
                                                            FontFamily="Consolas"
                                                            FontSize="11"
-                                                           Text="{Binding RightFx, StringFormat='fx:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.RightFx, StringFormat='fx:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="0"
                                                     Grid.Column="1"
@@ -343,7 +343,7 @@
                                                            FontFamily="Consolas"
                                                            FontSize="11"
                                                            Foreground="#E65100"
-                                                           Text="{Binding RightCx, StringFormat='Cx:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.RightCx, StringFormat='Cx:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="1"
                                                     Grid.Column="0"
@@ -366,7 +366,7 @@
                                                 <TextBlock HorizontalAlignment="Center"
                                                            FontFamily="Consolas"
                                                            FontSize="11"
-                                                           Text="{Binding RightFy, StringFormat='fy:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.RightFy, StringFormat='fy:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="1"
                                                     Grid.Column="2"
@@ -378,7 +378,7 @@
                                                            FontFamily="Consolas"
                                                            FontSize="11"
                                                            Foreground="#E65100"
-                                                           Text="{Binding RightCy, StringFormat='Cy:{0}'}" />
+                                                           Text="{Binding LoadedCalibration.RightCy, StringFormat='Cy:{0}'}" />
                                             </Border>
                                             <Border Grid.Row="2"
                                                     Grid.Column="0"
@@ -436,27 +436,27 @@
                                                        Grid.Column="0"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding RightK1, StringFormat='K1 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.RightK1, StringFormat='K1 = {0}'}" />
                                             <TextBlock Grid.Row="0"
                                                        Grid.Column="1"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding RightK2, StringFormat='K2 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.RightK2, StringFormat='K2 = {0}'}" />
                                             <TextBlock Grid.Row="0"
                                                        Grid.Column="2"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding RightK3, StringFormat='K3 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.RightK3, StringFormat='K3 = {0}'}" />
                                             <TextBlock Grid.Row="1"
                                                        Grid.Column="0"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding RightP1, StringFormat='P1 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.RightP1, StringFormat='P1 = {0}'}" />
                                             <TextBlock Grid.Row="1"
                                                        Grid.Column="1"
                                                        FontFamily="Consolas"
                                                        FontSize="11"
-                                                       Text="{Binding RightP2, StringFormat='P2 = {0}'}" />
+                                                       Text="{Binding LoadedCalibration.RightP2, StringFormat='P2 = {0}'}" />
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -514,7 +514,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R11}" />
+                                                               Text="{Binding LoadedCalibration.R11}" />
                                                 </Border>
                                                 <Border Grid.Row="1"
                                                         Grid.Column="2"
@@ -525,7 +525,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R12}" />
+                                                               Text="{Binding LoadedCalibration.R12}" />
                                                 </Border>
                                                 <Border Grid.Row="1"
                                                         Grid.Column="3"
@@ -536,7 +536,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R13}" />
+                                                               Text="{Binding LoadedCalibration.R13}" />
                                                 </Border>
                                                 <Border Grid.Row="2"
                                                         Grid.Column="1"
@@ -547,7 +547,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R21}" />
+                                                               Text="{Binding LoadedCalibration.R21}" />
                                                 </Border>
                                                 <Border Grid.Row="2"
                                                         Grid.Column="2"
@@ -558,7 +558,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R22}" />
+                                                               Text="{Binding LoadedCalibration.R22}" />
                                                 </Border>
                                                 <Border Grid.Row="2"
                                                         Grid.Column="3"
@@ -569,7 +569,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R23}" />
+                                                               Text="{Binding LoadedCalibration.R23}" />
                                                 </Border>
                                                 <Border Grid.Row="3"
                                                         Grid.Column="1"
@@ -580,7 +580,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R31}" />
+                                                               Text="{Binding LoadedCalibration.R31}" />
                                                 </Border>
                                                 <Border Grid.Row="3"
                                                         Grid.Column="2"
@@ -591,7 +591,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R32}" />
+                                                               Text="{Binding LoadedCalibration.R32}" />
                                                 </Border>
                                                 <Border Grid.Row="3"
                                                         Grid.Column="3"
@@ -602,7 +602,7 @@
                                                     <TextBlock HorizontalAlignment="Center"
                                                                FontFamily="Consolas"
                                                                FontSize="10"
-                                                               Text="{Binding R33}" />
+                                                               Text="{Binding LoadedCalibration.R33}" />
                                                 </Border>
                                             </Grid>
                                         </StackPanel>
@@ -653,7 +653,7 @@
                                                                FontFamily="Consolas"
                                                                FontSize="11"
                                                                FontWeight="SemiBold"
-                                                               Text="{Binding Tx}" />
+                                                               Text="{Binding LoadedCalibration.Tx}" />
                                                 </Border>
                                                 <TextBlock Grid.Row="1"
                                                            Grid.Column="0"
@@ -673,7 +673,7 @@
                                                                FontFamily="Consolas"
                                                                FontSize="11"
                                                                FontWeight="SemiBold"
-                                                               Text="{Binding Ty}" />
+                                                               Text="{Binding LoadedCalibration.Ty}" />
                                                 </Border>
                                                 <TextBlock Grid.Row="2"
                                                            Grid.Column="0"
@@ -693,7 +693,7 @@
                                                                FontFamily="Consolas"
                                                                FontSize="11"
                                                                FontWeight="SemiBold"
-                                                               Text="{Binding Tz}" />
+                                                               Text="{Binding LoadedCalibration.Tz}" />
                                                 </Border>
                                             </Grid>
 

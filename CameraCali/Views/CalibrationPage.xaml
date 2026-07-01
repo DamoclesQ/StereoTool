@@ -3,7 +3,6 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:helpers="clr-namespace:CameraCali.Helpers"
       xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
-      xmlns:models="clr-namespace:CameraCali.Models"
       xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
       Title="双目标定"
       Background="White">
@@ -14,23 +13,75 @@
     </Page.Resources>
 
 
-    <Grid Margin="15">
+    <Grid Margin="5,5">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <!--  棋盘格配置  -->
-            <RowDefinition Height="*" />
-            <!--  有效图片对 + 预览（左右并排）  -->
             <RowDefinition Height="Auto" />
             <!--  操作按钮  -->
             <RowDefinition Height="Auto" />
             <!--  标定结果  -->
             <RowDefinition Height="Auto" />
+            <!--  有效图片对 + 预览（左右并排）  -->
+            <RowDefinition Height="*" />
             <!--  进度 + 状态  -->
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!--  ═══════════ Row 0: 棋盘格配置 ═══════════  -->
-        <GroupBox Grid.Row="0" Header="棋盘格配置">
-            <StackPanel Orientation="Horizontal">
+        <!--  ═══════════ Row 0: 操作按钮 ═══════════  -->
+        <GroupBox Grid.Row="0" Header="Cali">
+            <Grid Margin="5,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <WrapPanel>
+                    <StackPanel Margin="5,3">
+                        <Button Command="{Binding ImportLeftImagesCommand}" Content="📂 导入左图" />
+                        <TextBlock Text="{Binding LeftPendingCount, StringFormat='待处理: {0} 张'}" />
+                    </StackPanel>
+
+                    <StackPanel Margin="5,3">
+                        <Button Command="{Binding ImportRightImagesCommand}" Content="📂 导入右图" />
+                        <TextBlock Text="{Binding RightPendingCount, StringFormat='待处理: {0} 张'}" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <WrapPanel Grid.Column="1">
+                    <Button Width="120"
+                            Height="36"
+                            Margin="5,3"
+                            Command="{Binding DetectCornersCommand}"
+                            Content="🔍 检测角点"
+                            FontWeight="SemiBold"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
+                    <Button Width="120"
+                            Height="36"
+                            Margin="5,3"
+                            Command="{Binding StartCalibrationCommand}"
+                            Content="🚀 开始标定"
+                            FontWeight="SemiBold"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
+                    <Button Width="140"
+                            Height="36"
+                            Margin="5,3"
+                            Command="{Binding SaveCalibrationFileCommand}"
+                            Content="💾 保存标定文件"
+                            FontWeight="SemiBold" />
+                    <Button Width="120"
+                            Height="36"
+                            Margin="5,3"
+                            Command="{Binding ClearDataCommand}"
+                            Content="🗑 清空数据"
+                            FontWeight="SemiBold"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
+                </WrapPanel>
+            </Grid>
+        </GroupBox>
+
+        <!--  ═══════════ Row 1: 棋盘格配置 ═══════════  -->
+        <GroupBox Grid.Row="1" Header="棋盘格配置">
+            <WrapPanel Margin="5,5">
                 <TextBlock VerticalAlignment="Center"
                            FontSize="12"
                            Text="内角点列数:" />
@@ -59,11 +110,662 @@
                          Margin="5,0,15,0"
                          VerticalAlignment="Center"
                          Text="{Binding ChessboardConfig.PixelSizeUm}" />
-            </StackPanel>
+            </WrapPanel>
         </GroupBox>
 
-        <!--  ═══════════ Row 1: 有效图片对列表 + 角点预览（左右并排） ═══════════  -->
-        <Grid Grid.Row="1">
+        <!--  ═══════════ Row 2: 标定结果 ═══════════  -->
+        <GroupBox Grid.Row="2"
+                  Header="标定结果"
+                  Visibility="{Binding HasCalibrationResult, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
+            <Expander Header="标定结果（点击展开/折叠）" IsExpanded="True">
+                <StackPanel>
+                    <!--  统计信息卡片  -->
+                    <Border Margin="0,5"
+                            Padding="5,3"
+                            Background="#FAFAFA"
+                            BorderBrush="#E0E0E0"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <WrapPanel>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#E65100"
+                                       Text="{Binding SkippedCount, StringFormat='跳过 {0} 对'}" />
+                            <TextBlock Width="20" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#E65100"
+                                       Text="{Binding ReprojectionErrorDisplay, StringFormat='重投影误差={0}'}" />
+                        </WrapPanel>
+                    </Border>
+
+                    <!--  左右相机内参 + 畸变卡片  -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="6" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!--  左相机卡片  -->
+                        <Border Grid.Column="0"
+                                Padding="5,3"
+                                Background="#FAFAFA"
+                                BorderBrush="#E0E0E0"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Margin="0,0,0,6"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#1565C0"
+                                           Text="📷 左相机" />
+                                <!--  物理焦距（标定页特有）  -->
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           Foreground="#6A1B9A"
+                                           Text="{Binding LeftFocalMm, StringFormat='物理焦距 f = {0} mm'}" />
+                                <!--  内参矩阵 K  -->
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#37474F"
+                                           Text="内参矩阵 K"
+                                           ToolTip="3×3 相机内参矩阵" />
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Text="{Binding CalibrationResult.LeftFx, StringFormat='fx:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#E65100"
+                                                   Text="{Binding CalibrationResult.LeftCx, StringFormat='Cx:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Text="{Binding CalibrationResult.LeftFy, StringFormat='fy:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#E65100"
+                                                   Text="{Binding CalibrationResult.LeftCy, StringFormat='Cy:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="1" />
+                                    </Border>
+                                </Grid>
+                                <!--  畸变系数 D  -->
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#37474F"
+                                           Text="畸变系数 D"
+                                           ToolTip="k1,k2=径向, p1,p2=切向, k3=高阶径向" />
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.LeftK1, StringFormat='K1 = {0}'}" />
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.LeftK2, StringFormat='K2 = {0}'}" />
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="2"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.LeftK3, StringFormat='K3 = {0}'}" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.LeftP1, StringFormat='P1 = {0}'}" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.LeftP2, StringFormat='P2 = {0}'}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <GridSplitter Grid.Column="1"
+                                      Width="4"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch"
+                                      Background="#E0E0E0" />
+
+                        <!--  右相机卡片  -->
+                        <Border Grid.Column="2"
+                                Padding="8,6"
+                                Background="#FAFAFA"
+                                BorderBrush="#E0E0E0"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Margin="0,0,0,6"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#1565C0"
+                                           Text="📷 右相机" />
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           Foreground="#6A1B9A"
+                                           Text="{Binding RightFocalMm, StringFormat='物理焦距 f = {0} mm'}" />
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#37474F"
+                                           Text="内参矩阵 K"
+                                           ToolTip="3×3 相机内参矩阵" />
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Text="{Binding CalibrationResult.RightFx, StringFormat='fx:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="0"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#E65100"
+                                                   Text="{Binding CalibrationResult.RightCx, StringFormat='Cx:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Text="{Binding CalibrationResult.RightFy, StringFormat='fy:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="1"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="White"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#E65100"
+                                                   Text="{Binding CalibrationResult.RightCy, StringFormat='Cy:{0}'}" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="0"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="1"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="0" />
+                                    </Border>
+                                    <Border Grid.Row="2"
+                                            Grid.Column="2"
+                                            Padding="4,2"
+                                            Background="#FFF8E1"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11"
+                                                   Foreground="#9E9E9E"
+                                                   Text="1" />
+                                    </Border>
+                                </Grid>
+                                <TextBlock Margin="0,0,0,4"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#37474F"
+                                           Text="畸变系数 D" />
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.RightK1, StringFormat='K1 = {0}'}" />
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.RightK2, StringFormat='K2 = {0}'}" />
+                                    <TextBlock Grid.Row="0"
+                                               Grid.Column="2"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.RightK3, StringFormat='K3 = {0}'}" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="0"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.RightP1, StringFormat='P1 = {0}'}" />
+                                    <TextBlock Grid.Row="1"
+                                               Grid.Column="1"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Text="{Binding CalibrationResult.RightP2, StringFormat='P2 = {0}'}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!--  外参  -->
+                    <StackPanel Margin="0,6,0,0">
+                        <Rectangle Height="1"
+                                   Margin="0,5"
+                                   Fill="#E0E0E0" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!--  R 矩阵  -->
+                            <Border Grid.Column="0"
+                                    Padding="8,6"
+                                    Background="#FAFAFA"
+                                    BorderBrush="#E0E0E0"
+                                    BorderThickness="1"
+                                    CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Margin="0,0,0,6"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="#1565C0"
+                                               Text="旋转矩阵 R"
+                                               ToolTip="3×3 正交旋转矩阵" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="0" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Border Grid.Row="1"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R11}" />
+                                        </Border>
+                                        <Border Grid.Row="1"
+                                                Grid.Column="2"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R12}" />
+                                        </Border>
+                                        <Border Grid.Row="1"
+                                                Grid.Column="3"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R13}" />
+                                        </Border>
+                                        <Border Grid.Row="2"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R21}" />
+                                        </Border>
+                                        <Border Grid.Row="2"
+                                                Grid.Column="2"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R22}" />
+                                        </Border>
+                                        <Border Grid.Row="2"
+                                                Grid.Column="3"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R23}" />
+                                        </Border>
+                                        <Border Grid.Row="3"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R31}" />
+                                        </Border>
+                                        <Border Grid.Row="3"
+                                                Grid.Column="2"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R32}" />
+                                        </Border>
+                                        <Border Grid.Row="3"
+                                                Grid.Column="3"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       Text="{Binding CalibrationResult.R33}" />
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <!--  T 向量  -->
+                            <Border Grid.Column="2"
+                                    MinWidth="130"
+                                    Padding="8,6"
+                                    Background="#FAFAFA"
+                                    BorderBrush="#E0E0E0"
+                                    BorderThickness="1"
+                                    CornerRadius="4">
+                                <StackPanel>
+                                    <WrapPanel>
+                                        <TextBlock Margin="0,0,0,6"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#2E7D32"
+                                                   Text="平移向量 T (mm)"
+                                                   ToolTip="3×1 平移向量 (mm)" />
+                                    </WrapPanel>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="0"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2E7D32"
+                                                   Text="Tx" />
+                                        <Border Grid.Row="0"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding CalibrationResult.Tx}" />
+                                        </Border>
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="0"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2E7D32"
+                                                   Text="Ty" />
+                                        <Border Grid.Row="1"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding CalibrationResult.Ty}" />
+                                        </Border>
+                                        <TextBlock Grid.Row="2"
+                                                   Grid.Column="0"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="11"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2E7D32"
+                                                   Text="Tz" />
+                                        <Border Grid.Row="2"
+                                                Grid.Column="1"
+                                                Padding="5,2"
+                                                Background="White"
+                                                BorderBrush="#E8E8E8"
+                                                BorderThickness="1">
+                                            <TextBlock HorizontalAlignment="Center"
+                                                       FontFamily="Consolas"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding CalibrationResult.Tz}" />
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+        </GroupBox>
+
+        <!--  ═══════════ Row 3: 有效图片对列表 + 角点预览（左右并排） ═══════════  -->
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="10*" />
                 <ColumnDefinition Width="20*" />
@@ -86,8 +788,8 @@
                             <Setter Property="FontWeight" Value="Bold" />
                             <Setter Property="FontSize" Value="11" />
                             <Setter Property="BorderBrush" Value="#E0E0E0" />
-                            <Setter Property="BorderThickness" Value="0,0,0,1" />
-                            <Setter Property="Padding" Value="4,0" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="Padding" Value="4,2" />
                         </Style>
                         <Style TargetType="DataGridCell">
                             <Setter Property="BorderBrush" Value="#E0E0E0" />
@@ -148,7 +850,7 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!--  列 4：角点状态  -->
-                        <DataGridTextColumn Width="70"
+                        <DataGridTextColumn Width="50"
                                             Binding="{Binding CornerStatus}"
                                             CanUserSort="True"
                                             Header="角点">
@@ -161,13 +863,13 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <!--  列 5：删除按钮  -->
-                        <DataGridTemplateColumn Width="56"
+                        <DataGridTemplateColumn Width="50"
                                                 CanUserSort="False"
                                                 Header="操作">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Button Width="45"
-                                            Height="22"
+                                            Height="20"
                                             Padding="0"
                                             Background="#e74c3c"
                                             BorderThickness="0"
@@ -240,703 +942,6 @@
                 </Grid>
             </GroupBox>
         </Grid>
-
-        <!--  ═══════════ Row 2: 操作按钮 ═══════════  -->
-        <GroupBox Grid.Row="2" Header="Cali">
-            <WrapPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <StackPanel Margin="5,3">
-                    <Button Command="{Binding ImportLeftImagesCommand}" Content="📂 导入左图" />
-                    <TextBlock Text="{Binding LeftPendingCount, StringFormat='待处理: {0} 张'}" />
-                </StackPanel>
-
-                <StackPanel Margin="5,3">
-                    <Button Command="{Binding ImportRightImagesCommand}" Content="📂 导入右图" />
-                    <TextBlock Text="{Binding RightPendingCount, StringFormat='待处理: {0} 张'}" />
-                </StackPanel>
-                <Button Width="120"
-                        Height="36"
-                        Margin="4"
-                        Command="{Binding DetectCornersCommand}"
-                        Content="🔍 检测角点"
-                        FontWeight="SemiBold"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
-                <Button Width="120"
-                        Height="36"
-                        Margin="4"
-                        Command="{Binding StartCalibrationCommand}"
-                        Content="🚀 开始标定"
-                        FontWeight="SemiBold"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
-                <Button Width="140"
-                        Height="36"
-                        Margin="4"
-                        Command="{Binding SaveCalibrationFileCommand}"
-                        Content="💾 保存标定文件" />
-                <Button Width="120"
-                        Height="36"
-                        Margin="4"
-                        Command="{Binding ClearDataCommand}"
-                        Content="🗑 清空数据"
-                        FontWeight="SemiBold"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}" />
-
-            </WrapPanel>
-        </GroupBox>
-        <!--  ═══════════ Row 3: 标定结果 ═══════════  -->
-        <GroupBox Grid.Row="3"
-                  Margin="0,0,0,8"
-                  Padding="8"
-                  Header="标定结果"
-                  Visibility="{Binding HasCalibrationResult, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
-             <Expander Margin="0,3"
-                       Padding="5"
-                       Header="标定结果（点击展开/折叠）"
-                       IsExpanded="True">
-            <StackPanel>
-                <!--  统计信息卡片  -->
-                <Border Margin="0,5"
-                        Padding="8,6"
-                        Background="#FAFAFA"
-                        BorderBrush="#E0E0E0"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                    <WrapPanel>
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="12"
-                                   Foreground="#E65100"
-                                   Text="{Binding SkippedCount, StringFormat='跳过 {0} 对'}" />
-                        <TextBlock Width="20" />
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="12"
-                                   Foreground="#E65100"
-                                   Text="{Binding ReprojectionErrorDisplay, StringFormat='重投影误差={0}'}" />
-                    </WrapPanel>
-                </Border>
-
-                <!--  左右相机内参 + 畸变卡片  -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="6" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!--  左相机卡片  -->
-                    <Border Grid.Column="0"
-                            Padding="8,6"
-                            Background="#FAFAFA"
-                            BorderBrush="#E0E0E0"
-                            BorderThickness="1"
-                            CornerRadius="4">
-                        <StackPanel>
-                            <TextBlock Margin="0,0,0,6"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Foreground="#1565C0"
-                                       Text="📷 左相机" />
-                            <!--  物理焦距（标定页特有）  -->
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       Foreground="#6A1B9A"
-                                       Text="{Binding LeftFocalMm, StringFormat='物理焦距 f = {0} mm'}" />
-                            <!--  内参矩阵 K  -->
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="#37474F"
-                                       Text="内参矩阵 K"
-                                       ToolTip="3×3 相机内参矩阵" />
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Border Grid.Row="0"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Text="{Binding LeftFx, StringFormat='fx:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="0"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="0"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#E65100"
-                                               Text="{Binding LeftCx, StringFormat='Cx:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Text="{Binding LeftFy, StringFormat='fy:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#E65100"
-                                               Text="{Binding LeftCy, StringFormat='Cy:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="1" />
-                                </Border>
-                            </Grid>
-                            <!--  畸变系数 D  -->
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="#37474F"
-                                       Text="畸变系数 D"
-                                       ToolTip="k1,k2=径向, p1,p2=切向, k3=高阶径向" />
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="0"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding LeftK1, StringFormat='K1 = {0}'}" />
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="1"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding LeftK2, StringFormat='K2 = {0}'}" />
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="2"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding LeftK3, StringFormat='K3 = {0}'}" />
-                                <TextBlock Grid.Row="1"
-                                           Grid.Column="0"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding LeftP1, StringFormat='P1 = {0}'}" />
-                                <TextBlock Grid.Row="1"
-                                           Grid.Column="1"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding LeftP2, StringFormat='P2 = {0}'}" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <GridSplitter Grid.Column="1"
-                                  Width="4"
-                                  HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Stretch"
-                                  Background="#E0E0E0" />
-
-                    <!--  右相机卡片  -->
-                    <Border Grid.Column="2"
-                            Padding="8,6"
-                            Background="#FAFAFA"
-                            BorderBrush="#E0E0E0"
-                            BorderThickness="1"
-                            CornerRadius="4">
-                        <StackPanel>
-                            <TextBlock Margin="0,0,0,6"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Foreground="#1565C0"
-                                       Text="📷 右相机" />
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       Foreground="#6A1B9A"
-                                       Text="{Binding RightFocalMm, StringFormat='物理焦距 f = {0} mm'}" />
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="#37474F"
-                                       Text="内参矩阵 K"
-                                       ToolTip="3×3 相机内参矩阵" />
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Border Grid.Row="0"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Text="{Binding RightFx, StringFormat='fx:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="0"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="0"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#E65100"
-                                               Text="{Binding RightCx, StringFormat='Cx:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Text="{Binding RightFy, StringFormat='fy:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="1"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="White"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#E65100"
-                                               Text="{Binding RightCy, StringFormat='Cy:{0}'}" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="0"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="1"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="0" />
-                                </Border>
-                                <Border Grid.Row="2"
-                                        Grid.Column="2"
-                                        Padding="4,2"
-                                        Background="#FFF8E1"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <TextBlock HorizontalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#9E9E9E"
-                                               Text="1" />
-                                </Border>
-                            </Grid>
-                            <TextBlock Margin="0,0,0,4"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="#37474F"
-                                       Text="畸变系数 D" />
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="0"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding RightK1, StringFormat='K1 = {0}'}" />
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="1"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding RightK2, StringFormat='K2 = {0}'}" />
-                                <TextBlock Grid.Row="0"
-                                           Grid.Column="2"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding RightK3, StringFormat='K3 = {0}'}" />
-                                <TextBlock Grid.Row="1"
-                                           Grid.Column="0"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding RightP1, StringFormat='P1 = {0}'}" />
-                                <TextBlock Grid.Row="1"
-                                           Grid.Column="1"
-                                           FontFamily="Consolas"
-                                           FontSize="11"
-                                           Text="{Binding RightP2, StringFormat='P2 = {0}'}" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-
-                <!--  外参  -->
-                <StackPanel Margin="0,6,0,0">
-                    <Rectangle Height="1"
-                               Margin="0,5"
-                               Fill="#E0E0E0" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <!--  R 矩阵  -->
-                        <Border Grid.Column="0"
-                                Padding="8,6"
-                                Background="#FAFAFA"
-                                BorderBrush="#E0E0E0"
-                                BorderThickness="1"
-                                CornerRadius="4">
-                            <StackPanel>
-                                <TextBlock Margin="0,0,0,6"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="#1565C0"
-                                           Text="旋转矩阵 R"
-                                           ToolTip="3×3 正交旋转矩阵" />
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="0" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Border Grid.Row="1"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R11}" />
-                                    </Border>
-                                    <Border Grid.Row="1"
-                                            Grid.Column="2"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R12}" />
-                                    </Border>
-                                    <Border Grid.Row="1"
-                                            Grid.Column="3"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R13}" />
-                                    </Border>
-                                    <Border Grid.Row="2"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R21}" />
-                                    </Border>
-                                    <Border Grid.Row="2"
-                                            Grid.Column="2"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R22}" />
-                                    </Border>
-                                    <Border Grid.Row="2"
-                                            Grid.Column="3"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R23}" />
-                                    </Border>
-                                    <Border Grid.Row="3"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R31}" />
-                                    </Border>
-                                    <Border Grid.Row="3"
-                                            Grid.Column="2"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R32}" />
-                                    </Border>
-                                    <Border Grid.Row="3"
-                                            Grid.Column="3"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="10"
-                                                   Text="{Binding R33}" />
-                                    </Border>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                        <!--  T 向量  -->
-                        <Border Grid.Column="2"
-                                MinWidth="130"
-                                Padding="8,6"
-                                Background="#FAFAFA"
-                                BorderBrush="#E0E0E0"
-                                BorderThickness="1"
-                                CornerRadius="4">
-                            <StackPanel>
-                                <WrapPanel>
-                                    <TextBlock Margin="0,0,0,6"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="#2E7D32"
-                                               Text="平移向量 T (mm)"
-                                               ToolTip="3×1 平移向量 (mm)" />
-                                </WrapPanel>
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Row="0"
-                                               Grid.Column="0"
-                                               Margin="0,0,6,0"
-                                               VerticalAlignment="Center"
-                                               FontSize="11"
-                                               FontWeight="Bold"
-                                               Foreground="#2E7D32"
-                                               Text="Tx" />
-                                    <Border Grid.Row="0"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding Tx}" />
-                                    </Border>
-                                    <TextBlock Grid.Row="1"
-                                               Grid.Column="0"
-                                               Margin="0,0,6,0"
-                                               VerticalAlignment="Center"
-                                               FontSize="11"
-                                               FontWeight="Bold"
-                                               Foreground="#2E7D32"
-                                               Text="Ty" />
-                                    <Border Grid.Row="1"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding Ty}" />
-                                    </Border>
-                                    <TextBlock Grid.Row="2"
-                                               Grid.Column="0"
-                                               Margin="0,0,6,0"
-                                               VerticalAlignment="Center"
-                                               FontSize="11"
-                                               FontWeight="Bold"
-                                               Foreground="#2E7D32"
-                                               Text="Tz" />
-                                    <Border Grid.Row="2"
-                                            Grid.Column="1"
-                                            Padding="5,2"
-                                            Background="White"
-                                            BorderBrush="#E8E8E8"
-                                            BorderThickness="1">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontFamily="Consolas"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding Tz}" />
-                                    </Border>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </StackPanel>
-            </StackPanel>
-            </Expander>
-        </GroupBox>
 
         <!--  ═══════════ Row 4: 进度 + 状态 ═══════════  -->
         <Border Grid.Row="4"

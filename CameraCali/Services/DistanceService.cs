@@ -1,5 +1,5 @@
-﻿using System.IO;
-using CameraCali.Models;
+using System.IO;
+using CameraCalibrator.Models;
 using OpenCvSharp;
 
 namespace CameraCali.Services;
@@ -28,7 +28,7 @@ public class DistanceService : IDisposable
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>上次使用的标定结果引用（用于判断是否需要重算）</summary>
-    private CalibrationResult? _cachedCalib;
+    private StereoParameters? _cachedCalib;
     /// <summary>缓存的校正参数，切换标定结果时自动重建</summary>
     private StereoRectifyResult? _cachedRectifyResult;
 
@@ -48,7 +48,7 @@ public class DistanceService : IDisposable
     public async Task<double> MeasureDistanceAsync(
         string leftImagePath,
         string rightImagePath,
-        CalibrationResult calib,
+        StereoParameters calib,
         Point2f pixelPoint)
     {
         // 参数验证放在 Task.Run 外部，尽早暴露错误
@@ -153,7 +153,7 @@ public class DistanceService : IDisposable
     /// <param name="leftPoint">左图像上的像素坐标</param>
     /// <param name="rightPoint">右图像上的像素坐标</param>
     /// <returns>空间距离（米），坐标越界或计算失败时返回 NaN</returns>
-    public async Task<double> MeasureDistanceFromPointsAsync(CalibrationResult calib, Point2f leftPoint, Point2f rightPoint)
+    public async Task<double> MeasureDistanceFromPointsAsync(StereoParameters calib, Point2f leftPoint, Point2f rightPoint)
     {
         if (leftPoint.X < 0 || leftPoint.X >= calib.ImageWidth ||
             leftPoint.Y < 0 || leftPoint.Y >= calib.ImageHeight)
@@ -201,7 +201,7 @@ public class DistanceService : IDisposable
     public Mat ComputeDisparityMap(
         string leftImagePath,
         string rightImagePath,
-        CalibrationResult calib)
+        StereoParameters calib)
     {
         if (!File.Exists(leftImagePath))
             throw new ArgumentException($"左图像文件不存在: {leftImagePath}", nameof(leftImagePath));
@@ -250,7 +250,7 @@ public class DistanceService : IDisposable
     /// 获取立体校正参数（带缓存）。
     /// 当标定结果未变时直接返回缓存，避免重复执行 StereoRectify 和 InitUndistortRectifyMap。
     /// </summary>
-    private StereoRectifyResult GetRectifyParams(CalibrationResult calib)
+    private StereoRectifyResult GetRectifyParams(StereoParameters calib)
     {
         if (ReferenceEquals(_cachedCalib, calib) && _cachedRectifyResult != null)
             return _cachedRectifyResult;
@@ -276,7 +276,7 @@ public class DistanceService : IDisposable
     /// <summary>
     /// 执行双目立体校正，返回完整的校正参数。
     /// </summary>
-    private static StereoRectifyResult PerformStereoRectifyFull(CalibrationResult calib)
+    private static StereoRectifyResult PerformStereoRectifyFull(StereoParameters calib)
     {
         var leftCam = CalibrationService.Array2DToMat(calib.LeftCameraMatrix);
         var leftDist = CalibrationService.Array1DToMat(calib.LeftDistCoeffs);
@@ -308,7 +308,7 @@ public class DistanceService : IDisposable
     /// <summary>
     /// 执行双目立体校正（精简版），仅返回重映射表和 Q 矩阵。
     /// </summary>
-    private static (Mat Q, Mat map1L, Mat map2L, Mat map1R, Mat map2R) PerformStereoRectify(CalibrationResult calib)
+    private static (Mat Q, Mat map1L, Mat map2L, Mat map1R, Mat map2R) PerformStereoRectify(StereoParameters calib)
     {
         using var leftCam = CalibrationService.Array2DToMat(calib.LeftCameraMatrix);
         using var leftDist = CalibrationService.Array1DToMat(calib.LeftDistCoeffs);
