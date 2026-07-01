@@ -2,7 +2,7 @@
 using System.Windows;
 using System.Windows.Data;
 
-namespace CameraCali.Helpers;
+namespace StereoTool.Helpers;
 
 /// <summary>
 /// 布尔值到 Visibility 枚举的转换器，用于 XAML 绑定。

@@ -1,13 +1,13 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows.Media.Imaging;
-using CameraCalibrator.Models;
-using CameraCali.Services;
+using StereoTool.Models;
+using StereoTool.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenCvSharp;
 
-namespace CameraCali.ViewModels;
+namespace StereoTool.ViewModels;
 
 /// <summary>
 /// 双目测距页面的 ViewModel。

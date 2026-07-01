@@ -1,11 +1,11 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
-using CameraCali.ViewModels;
-using CameraCali.Views;
+using StereoTool.ViewModels;
+using StereoTool.Views;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CameraCali;
+namespace StereoTool;
 
 /// <summary>
 /// 应用程序主窗口。

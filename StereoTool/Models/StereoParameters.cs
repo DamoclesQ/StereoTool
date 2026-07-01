@@ -1,7 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using OpenCvSharp;
 
-namespace CameraCalibrator.Models;
+namespace StereoTool.Models;
 
 /// <summary>
 /// 双目标定参数模型。
@@ -70,9 +70,6 @@ public partial class StereoParameters : ObservableObject
     /// <summary>相机传感器像元尺寸（单位：μm），用于将像素焦距换算为物理焦距（mm）。设为 0 表示未提供。</summary>
     [ObservableProperty]
     private double _pixelSizeUm;
-
-    /// <summary>标定板世界坐标（3D 角点列表，每张标定图像对应一份相同的世界坐标模板）</summary>
-    public List<List<Point3f>> WorldPoints { get; set; } = [];
 
     /// <summary>标定图像的宽度（像素）</summary>
     [ObservableProperty]

@@ -1,6 +1,6 @@
 using OpenCvSharp;
 
-namespace CameraCalibrator.Models;
+namespace StereoTool.Models;
 
 /// <summary>
 /// 立体校正结果，封装 OpenCV StereoRectify 产生的所有校正参数。

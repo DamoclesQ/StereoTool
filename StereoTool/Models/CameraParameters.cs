@@ -1,7 +1,7 @@
-﻿using OpenCvSharp;
+using OpenCvSharp;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace CameraCalibrator.Models;
+namespace StereoTool.Models;
 
 /// <summary>
 /// 单目标定参数模型。
@@ -45,9 +45,6 @@ public partial class CameraParameters : ObservableObject
     /// <summary>相机传感器像元尺寸（单位：μm），设为 0 表示未提供</summary>
     [ObservableProperty]
     private double _pixelSizeUm;
-
-    /// <summary>标定板世界坐标（3D 角点列表）</summary>
-    public List<List<Point3f>> WorldPoints { get; set; } = [];
 
     // ═══════════════════════════════════════════════
     //  派生属性 — WPF 绑定用（string 格式化）

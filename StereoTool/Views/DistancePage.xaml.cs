@@ -2,9 +2,9 @@
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Input;
-using CameraCali.ViewModels;
+using StereoTool.ViewModels;
 
-namespace CameraCali.Views;
+namespace StereoTool.Views;
 
 /// <summary>
 /// 双目测距页面。通过 DataContext 绑定 DistanceViewModel，

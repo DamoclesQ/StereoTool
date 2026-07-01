@@ -1,10 +1,10 @@
 ﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using CameraCali.Views;
+using StereoTool.Views;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CameraCali.ViewModels;
+namespace StereoTool.ViewModels;
 
 /// <summary>
 /// 主窗口的 ViewModel，负责页面导航逻辑。

@@ -1,6 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace CameraCalibrator.Models;
+namespace StereoTool.Models;
 
 /// <summary>
 /// 棋盘格标定板配置参数

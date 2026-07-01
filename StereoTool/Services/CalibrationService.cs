@@ -1,8 +1,8 @@
 ﻿using System.IO;
-using CameraCalibrator.Models;
+using StereoTool.Models;
 using OpenCvSharp;
 
-namespace CameraCali.Services;
+namespace StereoTool.Services;
 
 /// <summary>
 /// 双目相机标定服务，基于 OpenCV 棋盘格标定算法实现。
@@ -194,7 +194,6 @@ public class CalibrationService
                 ImageHeight = imageSize.Height,
                 SkippedPairCount = skippedPairs,     // 记录跳过的图片对数量
                 ReprojectionError = reprojectionError,
-                WorldPoints = objectPointsList,
                 CornerCols = config.CornerCols,
                 CornerRows = config.CornerRows,
                 SquareSize = config.SquareSize,
@@ -320,7 +319,6 @@ public class CalibrationService
                 ImageHeight = imageSize.Height,
                 SkippedPairCount = 0,
                 ReprojectionError = reprojectionError,
-                WorldPoints = objectPointsList,
                 CornerCols = config.CornerCols,
                 CornerRows = config.CornerRows,
                 SquareSize = config.SquareSize,
@@ -403,7 +401,6 @@ public class CalibrationService
                 ImageWidth = imageSize.Width,
                 ImageHeight = imageSize.Height,
                 ReprojectionError = rms,
-                WorldPoints = objectPointsList,
                 CornerCols = config.CornerCols,
                 CornerRows = config.CornerRows,
                 SquareSize = config.SquareSize,
@@ -456,7 +453,6 @@ public class CalibrationService
         fs.Write("TranslationVector", T);
         fs.Write("ImageWidth", result.ImageWidth);
         fs.Write("ImageHeight", result.ImageHeight);
-        fs.Write("SkippedPairCount", result.SkippedPairCount);
         fs.Write("ReprojectionError", result.ReprojectionError);
         fs.Write("CornerCols", result.CornerCols);
         fs.Write("CornerRows", result.CornerRows);

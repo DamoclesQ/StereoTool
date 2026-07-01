@@ -1,9 +1,9 @@
-<Window x:Class="CameraCali.MainWindow"
+﻿<Window x:Class="StereoTool.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="clr-namespace:CameraCali.ViewModels"
+        xmlns:vm="clr-namespace:StereoTool.ViewModels"
         Title="双目相机工具"
         Width="1100"
         Height="700"
@@ -71,21 +71,29 @@
                 BorderThickness="0,0,1,0">
             <StackPanel Margin="0,12,0,0" VerticalAlignment="Top">
                 <!--  应用标题  -->
-                <StackPanel Orientation="Horizontal" Margin="12,0,12,20">
-                    <TextBlock FontFamily="{StaticResource FASolid}" FontSize="16"
-                               Foreground="#1a202c" Text="&#xf610;" Margin="0,0,8,0"
+                <StackPanel Margin="12,0,12,20" Orientation="Horizontal">
+                    <TextBlock Margin="0,0,8,0"
+                               FontFamily="{StaticResource FASolid}"
+                               FontSize="16"
+                               Foreground="#1a202c"
+                               Text="&#xf610;"
                                ToolTip="双目相机标定与测距工具" />
-                    <TextBlock FontSize="16" FontWeight="SemiBold"
-                               Foreground="#1a202c" Text="双目相机工具" VerticalAlignment="Center" />
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Foreground="#1a202c"
+                               Text="双目相机工具" />
                 </StackPanel>
 
                 <!--  导航按钮  -->
                 <Button Command="{Binding NavigateDistanceCommand}">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
-                                       Text="&#xf545;" Margin="0,0,8,0" />
-                            <TextBlock Text="双目测距" FontSize="13" />
+                            <TextBlock Margin="0,0,8,0"
+                                       FontFamily="{StaticResource FASolid}"
+                                       FontSize="14"
+                                       Text="&#xf545;" />
+                            <TextBlock FontSize="13" Text="双目测距" />
                         </StackPanel>
                     </Button.Content>
                     <Button.Style>
@@ -105,9 +113,11 @@
                 <Button Command="{Binding NavigateCalibrationCommand}">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
-                                       Text="&#xf030;" Margin="0,0,8,0" />
-                            <TextBlock Text="双目标定" FontSize="13" />
+                            <TextBlock Margin="0,0,8,0"
+                                       FontFamily="{StaticResource FASolid}"
+                                       FontSize="14"
+                                       Text="&#xf030;" />
+                            <TextBlock FontSize="13" Text="双目标定" />
                         </StackPanel>
                     </Button.Content>
                     <Button.Style>
@@ -124,27 +134,29 @@
                     </Button.Style>
                 </Button>
 
-                 <Button Command="{Binding NavigateMonoCalibrationCommand}">
-                     <Button.Content>
-                         <StackPanel Orientation="Horizontal">
-                             <TextBlock FontFamily="{StaticResource FASolid}" FontSize="14"
-                                        Text="&#xf030;" Margin="0,0,8,0" />
-                             <TextBlock Text="单目标定" FontSize="13" />
-                         </StackPanel>
-                     </Button.Content>
-                     <Button.Style>
-                         <Style BasedOn="{StaticResource NavButton}" TargetType="Button">
-                             <Setter Property="Background" Value="Transparent" />
-                             <Setter Property="Foreground" Value="#4a5568" />
-                             <Style.Triggers>
-                                 <DataTrigger Binding="{Binding SelectedNavItem}" Value="单目标定">
-                                     <Setter Property="Background" Value="#4a90d9" />
-                                     <Setter Property="Foreground" Value="White" />
-                                 </DataTrigger>
-                             </Style.Triggers>
-                         </Style>
-                     </Button.Style>
-                 </Button>
+                <Button Command="{Binding NavigateMonoCalibrationCommand}">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Margin="0,0,8,0"
+                                       FontFamily="{StaticResource FASolid}"
+                                       FontSize="14"
+                                       Text="&#xf030;" />
+                            <TextBlock FontSize="13" Text="单目标定" />
+                        </StackPanel>
+                    </Button.Content>
+                    <Button.Style>
+                        <Style BasedOn="{StaticResource NavButton}" TargetType="Button">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="#4a5568" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedNavItem}" Value="单目标定">
+                                    <Setter Property="Background" Value="#4a90d9" />
+                                    <Setter Property="Foreground" Value="White" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <!--  版本信息（底部）  -->
                 <TextBlock Margin="12,40,0,0"

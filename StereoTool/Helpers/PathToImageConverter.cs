@@ -3,7 +3,7 @@ using System.IO;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 
-namespace CameraCali.Helpers;
+namespace StereoTool.Helpers;
 
 /// <summary>
 /// 将文件路径字符串转换为 WPF BitmapImage 的转换器。

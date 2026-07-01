@@ -1,8 +1,8 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using OpenCvSharp;
 using System.IO;
 
-namespace CameraCalibrator.Models;
+namespace StereoTool.Models;
 
 /// <summary>
 /// 已缓存角点检测结果的单目标定图像。

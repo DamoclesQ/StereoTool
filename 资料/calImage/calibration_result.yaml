@@ -42,9 +42,8 @@ TranslationVector: !!opencv-matrix
    data: [ -60.952023689277425, 0.030242171199238117, 1.2127491875874901 ]
 ImageWidth: 640
 ImageHeight: 480
-SkippedPairCount: 0
 ReprojectionError: 0.32271696315563769
-PatternWidth: 9
-PatternHeight: 6
+CornerCols: 9
+CornerRows: 6
 SquareSize: 40.
 PixelSizeUm: 2.3999999999999999

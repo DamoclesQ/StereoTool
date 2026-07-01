@@ -1,11 +1,11 @@
-using System.Windows;
-using CameraCali.Services;
-using CameraCali.ViewModels;
-using CameraCali.Views;
+﻿using System.Windows;
+using StereoTool.Services;
+using StereoTool.ViewModels;
+using StereoTool.Views;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CameraCali;
+namespace StereoTool;
 
 /// <summary>
 /// 应用程序入口，负责配置依赖注入容器并启动主窗口。
