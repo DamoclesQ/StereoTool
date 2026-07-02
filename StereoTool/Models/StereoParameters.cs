@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using OpenCvSharp;
 
 namespace StereoTool.Models;
@@ -6,7 +6,7 @@ namespace StereoTool.Models;
 /// <summary>
 /// 双目标定参数模型。
 /// 包含左右相机的内参矩阵和畸变系数、双目外参（旋转矩阵R、平移向量T）、
-/// 重投影误差、标定板世界坐标和图像尺寸。
+/// 本质矩阵E、基础矩阵F、重投影误差、标定板世界坐标和图像尺寸。
 /// 内置用于 WPF 绑定的派生属性，当原始数据变化时自动刷新所有显示值。
 /// </summary>
 public partial class StereoParameters : ObservableObject
@@ -46,6 +46,14 @@ public partial class StereoParameters : ObservableObject
     /// <summary>双目平移向量 T（3 个元素）</summary>
     [ObservableProperty]
     private double[] _translationVector = [];
+
+    /// <summary>本质矩阵 E (3x3)，编码双目相对位姿（R 和 T 的组合）</summary>
+    [ObservableProperty]
+    private double[][] _essentialMatrix = [];
+
+    /// <summary>基础矩阵 F (3x3)，将左图像素映射到右图极线</summary>
+    [ObservableProperty]
+    private double[][] _fundamentalMatrix = [];
 
     // ═══════════════════════════════════════════════
     //  通用字段
@@ -211,6 +219,86 @@ public partial class StereoParameters : ObservableObject
         ? $"{TranslationVector[2]:F4}" : "--";
 
     // ═══════════════════════════════════════════════
+    //  派生属性 — 本质矩阵 E (3×3)，9 个分量
+    // ═══════════════════════════════════════════════
+
+    /// <summary>本质矩阵 E 第1行第1列</summary>
+    public string E11 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 0
+        ? $"{EssentialMatrix[0][0]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第1行第2列</summary>
+    public string E12 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 1
+        ? $"{EssentialMatrix[0][1]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第1行第3列</summary>
+    public string E13 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 2
+        ? $"{EssentialMatrix[0][2]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第2行第1列</summary>
+    public string E21 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 0
+        ? $"{EssentialMatrix[1][0]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第2行第2列</summary>
+    public string E22 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 1
+        ? $"{EssentialMatrix[1][1]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第2行第3列</summary>
+    public string E23 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 2
+        ? $"{EssentialMatrix[1][2]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第3行第1列</summary>
+    public string E31 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 0
+        ? $"{EssentialMatrix[2][0]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第3行第2列</summary>
+    public string E32 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 1
+        ? $"{EssentialMatrix[2][1]:F6}" : "--";
+
+    /// <summary>本质矩阵 E 第3行第3列</summary>
+    public string E33 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 2
+        ? $"{EssentialMatrix[2][2]:F6}" : "--";
+
+    // ═══════════════════════════════════════════════
+    //  派生属性 — 基础矩阵 F (3×3)，9 个分量
+    // ═══════════════════════════════════════════════
+
+    /// <summary>基础矩阵 F 第1行第1列</summary>
+    public string F11 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 0
+        ? $"{FundamentalMatrix[0][0]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第1行第2列</summary>
+    public string F12 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 1
+        ? $"{FundamentalMatrix[0][1]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第1行第3列</summary>
+    public string F13 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 2
+        ? $"{FundamentalMatrix[0][2]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第2行第1列</summary>
+    public string F21 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 0
+        ? $"{FundamentalMatrix[1][0]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第2行第2列</summary>
+    public string F22 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 1
+        ? $"{FundamentalMatrix[1][1]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第2行第3列</summary>
+    public string F23 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 2
+        ? $"{FundamentalMatrix[1][2]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第3行第1列</summary>
+    public string F31 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 0
+        ? $"{FundamentalMatrix[2][0]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第3行第2列</summary>
+    public string F32 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 1
+        ? $"{FundamentalMatrix[2][1]:F6}" : "--";
+
+    /// <summary>基础矩阵 F 第3行第3列</summary>
+    public string F33 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 2
+        ? $"{FundamentalMatrix[2][2]:F6}" : "--";
+
+    // ═══════════════════════════════════════════════
     //  属性变更回调
     // ═══════════════════════════════════════════════
 
@@ -266,5 +354,21 @@ public partial class StereoParameters : ObservableObject
         OnPropertyChanged(nameof(Tx));
         OnPropertyChanged(nameof(Ty));
         OnPropertyChanged(nameof(Tz));
+    }
+
+    /// <summary>EssentialMatrix 变化时，通知所有 E 分量派生属性更新</summary>
+    partial void OnEssentialMatrixChanged(double[][] value)
+    {
+        OnPropertyChanged(nameof(E11)); OnPropertyChanged(nameof(E12)); OnPropertyChanged(nameof(E13));
+        OnPropertyChanged(nameof(E21)); OnPropertyChanged(nameof(E22)); OnPropertyChanged(nameof(E23));
+        OnPropertyChanged(nameof(E31)); OnPropertyChanged(nameof(E32)); OnPropertyChanged(nameof(E33));
+    }
+
+    /// <summary>FundamentalMatrix 变化时，通知所有 F 分量派生属性更新</summary>
+    partial void OnFundamentalMatrixChanged(double[][] value)
+    {
+        OnPropertyChanged(nameof(F11)); OnPropertyChanged(nameof(F12)); OnPropertyChanged(nameof(F13));
+        OnPropertyChanged(nameof(F21)); OnPropertyChanged(nameof(F22)); OnPropertyChanged(nameof(F23));
+        OnPropertyChanged(nameof(F31)); OnPropertyChanged(nameof(F32)); OnPropertyChanged(nameof(F33));
     }
 }

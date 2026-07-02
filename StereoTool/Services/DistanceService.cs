@@ -109,7 +109,7 @@ public class DistanceService : IDisposable
                 using var srcMat = new Mat(1, 1, MatType.CV_32FC2);
                 srcMat.Set(0, 0, pixelPoint);
                 using var dstMat = new Mat();
-                Cv2.UndistortPoints(InputArray.Create(srcMat), OutputArray.Create(dstMat), rect.LeftCameraMatrix, rect.LeftDistCoeffs, rect.LeftR, rect.LeftP);
+                Cv2.UndistortPoints(srcMat, dstMat, rect.LeftCameraMatrix, rect.LeftDistCoeffs, rect.LeftR, rect.LeftP);
                 var rectPt = dstMat.At<Point2f>(0, 0);
                 int rectX = (int)Math.Round(rectPt.X);
                 int rectY = (int)Math.Round(rectPt.Y);

@@ -1,6 +1,6 @@
-﻿using System.IO;
-using StereoTool.Models;
+using System.IO;
 using OpenCvSharp;
+using StereoTool.Models;
 
 namespace StereoTool.Services;
 
@@ -190,6 +190,8 @@ public class CalibrationService
                 RightDistCoeffs = MatToArray1D(rightDist),
                 RotationMatrix = MatToArray2D(R),
                 TranslationVector = MatToArray1D(T),
+                EssentialMatrix = MatToArray2D(E),
+                FundamentalMatrix = MatToArray2D(F),
                 ImageWidth = imageSize.Width,
                 ImageHeight = imageSize.Height,
                 SkippedPairCount = skippedPairs,     // 记录跳过的图片对数量
@@ -315,6 +317,8 @@ public class CalibrationService
                 RightDistCoeffs = MatToArray1D(rightDist),
                 RotationMatrix = MatToArray2D(R),
                 TranslationVector = MatToArray1D(T),
+                EssentialMatrix = MatToArray2D(E),
+                FundamentalMatrix = MatToArray2D(F),
                 ImageWidth = imageSize.Width,
                 ImageHeight = imageSize.Height,
                 SkippedPairCount = 0,
@@ -442,6 +446,8 @@ public class CalibrationService
         using var rightDist = Array1DToMat(result.RightDistCoeffs);
         using var R = Array2DToMat(result.RotationMatrix);
         using var T = Array1DToMat(result.TranslationVector);
+        using var E = Array2DToMat(result.EssentialMatrix);
+        using var F = Array2DToMat(result.FundamentalMatrix);
 
         // FileStorage.Write 自动以 YAML 格式序列化 Mat 数据
         using var fs = new FileStorage(filePath, FileStorage.Modes.Write);
@@ -451,6 +457,8 @@ public class CalibrationService
         fs.Write("RightDistCoeffs", rightDist);
         fs.Write("RotationMatrix", R);
         fs.Write("TranslationVector", T);
+        fs.Write("EssentialMatrix", E);
+        fs.Write("FundamentalMatrix", F);
         fs.Write("ImageWidth", result.ImageWidth);
         fs.Write("ImageHeight", result.ImageHeight);
         fs.Write("ReprojectionError", result.ReprojectionError);
@@ -491,6 +499,8 @@ public class CalibrationService
         using var rightDist = fs["RightDistCoeffs"].ReadMat();
         using var R = fs["RotationMatrix"].ReadMat();
         using var T = fs["TranslationVector"].ReadMat();
+        using var E = fs["EssentialMatrix"].ReadMat();
+        using var F = fs["FundamentalMatrix"].ReadMat();
 
         // 将 Mat 转换为 C# 基础类型后立即释放 Mat，避免内存泄漏
         return new StereoParameters
@@ -501,6 +511,8 @@ public class CalibrationService
             RightDistCoeffs = MatToArray1D(rightDist),
             RotationMatrix = MatToArray2D(R),
             TranslationVector = MatToArray1D(T),
+            EssentialMatrix = MatToArray2D(E),
+            FundamentalMatrix = MatToArray2D(F),
             ImageWidth = fs["ImageWidth"].ReadInt(),
             ImageHeight = fs["ImageHeight"].ReadInt(),
             SkippedPairCount = SafeReadInt(fs, "SkippedPairCount", 0),
