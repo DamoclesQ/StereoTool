@@ -25,7 +25,7 @@ public partial class DistancePage : Page
     /// <summary>
     /// 左图像 Canvas 上的鼠标点击事件处理。
     /// 将用户点击的 Canvas 坐标转换为图像坐标系下的像素坐标，
-    /// 并更新 ViewModel 中的 SelectedPoint 以触发距离测量。
+    /// 然后通过 ViewModel 的 OnImageClickedWithDistance 完成选点记录和即时测距。
     /// </summary>
     private void LeftImage_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -39,7 +39,6 @@ public partial class DistancePage : Page
             return;
 
         // 从 Canvas 坐标反算图像像素坐标（考虑 Stretch=Uniform 缩放）
-        // 计算图像在 Canvas 中的实际渲染区域（Uniform 模式保持宽高比）
         double canvasW = LeftImageCanvas.ActualWidth;
         double canvasH = LeftImageCanvas.ActualHeight;
         double imgW = leftBmp.PixelWidth;
@@ -67,13 +66,14 @@ public partial class DistancePage : Page
         pixelX = Math.Clamp(pixelX, 0, (int)imgW - 1);
         pixelY = Math.Clamp(pixelY, 0, (int)imgH - 1);
 
-        vm.SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
-
         // 同步设置标记点在 Canvas 中的坐标（将图像像素坐标反算回 Canvas 坐标）
         vm.MarkerX = pixelX * scale + offsetX - 7;  // -7 使圆点居中（Ellipse 宽高 14 的一半）
         vm.MarkerY = pixelY * scale + offsetY - 7;
         vm.MarkerVisible = true;
-        vm.StatusText = $"测量点已选择：({pixelX}, {pixelY}) — 就绪，可执行测距";
+
+        // 选点后立即从缓存的 XYZ 数据中提取距离（即时测距）
+        // OnImageClickedWithDistance 内部处理 SelectedPoint 设置、距离计算和 StatusText
+        vm.OnImageClickedWithDistance(pixelX, pixelY);
     }
 
     /// <summary>
