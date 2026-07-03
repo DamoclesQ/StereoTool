@@ -54,8 +54,8 @@ public partial class MainWindow : Window
         Page page = pageName switch
         {
             "Distance" => _serviceProvider.GetRequiredService<DistancePage>(),
-            "Calibration" => _serviceProvider.GetRequiredService<CalibrationPage>(),
-             "MonoCalibration" => _serviceProvider.GetRequiredService<MonoCalibrationPage>(),
+            "Calibration" => _serviceProvider.GetRequiredService<StereoCalibrationPage>(),
+             "MonoCalibration" => _serviceProvider.GetRequiredService<CalibrationPage>(),
             _ => throw new ArgumentException($"未知页面: {pageName}", nameof(pageName))
         };
 

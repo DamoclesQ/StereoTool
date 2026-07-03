@@ -51,13 +51,13 @@ public partial class App : Application
         // MainViewModel 为 Singleton（导航状态需要全局保持）
         services.AddSingleton<MainViewModel>();
         // 页面 ViewModel 为 Transient（每次导航获得新实例，适合页面间独立状态）
-        services.AddSingleton<CalibrationViewModel>();
+        services.AddSingleton<StereoCalibrationViewModel>();
         services.AddSingleton<DistanceViewModel>();
-        services.AddSingleton<MonoCalibrationViewModel>();
-        services.AddSingleton<MonoCalibrationPage>();
+        services.AddSingleton<CalibrationViewModel>();
+        services.AddSingleton<CalibrationPage>();
 
         // ── 注册 View（Page / Window） ──
-        services.AddSingleton<CalibrationPage>();
+        services.AddSingleton<StereoCalibrationPage>();
         services.AddSingleton<DistancePage>();
         services.AddSingleton<MainWindow>(); // 主窗口为 Singleton（整个应用生命周期只有一个）
 

@@ -16,7 +16,7 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>左相机内参矩阵 (3x3)</summary>
-    [ObservableProperty] private double[][] _leftCameraMatrix = [];
+    [ObservableProperty] private double[,] _leftCameraMatrix = new double[3,3];
 
     /// <summary>左相机畸变系数 (5 个：k1, k2, p1, p2, k3)</summary>
     [ObservableProperty] private double[] _leftDistCoeffs = [];
@@ -26,7 +26,7 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>右相机内参矩阵 (3x3)</summary>
-    [ObservableProperty] private double[][] _rightCameraMatrix = [];
+    [ObservableProperty] private double[,] _rightCameraMatrix = new double[3, 3];
 
     /// <summary>右相机畸变系数 (5 个：k1, k2, p1, p2, k3)</summary>
     [ObservableProperty] private double[] _rightDistCoeffs = [];
@@ -36,16 +36,16 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>双目旋转矩阵 R (3x3)</summary>
-    [ObservableProperty] private double[][] _rotationMatrix = [];
+    [ObservableProperty] private double[,] _rotationMatrix = new double[3, 3];
 
     /// <summary>双目平移向量 T（3 个元素）</summary>
     [ObservableProperty] private double[] _translationVector = [];
 
     /// <summary>本质矩阵 E (3x3)，编码双目相对位姿（R 和 T 的组合）</summary>
-    [ObservableProperty] private double[][] _essentialMatrix = [];
+    [ObservableProperty] private double[,] _essentialMatrix = new double[3, 3];
 
     /// <summary>基础矩阵 F (3x3)，将左图像素映射到右图极线</summary>
-    [ObservableProperty] private double[][] _fundamentalMatrix = [];
+    [ObservableProperty] private double[,] _fundamentalMatrix = new double[3, 3];
 
     // ═══════════════════════════════════════════════
     //  通用字段
@@ -77,16 +77,16 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>左相机 X 方向焦距（像素）</summary>
-    public string LeftFx => LeftCameraMatrix.Length > 0 ? $"{LeftCameraMatrix[0][0]:F2}" : "--";
+    public string LeftFx => LeftCameraMatrix.Length == 9 ? $"{LeftCameraMatrix[0,0]:F2}" : "--";
 
     /// <summary>左相机 Y 方向焦距（像素）</summary>
-    public string LeftFy => LeftCameraMatrix.Length > 1 && LeftCameraMatrix[1].Length > 1 ? $"{LeftCameraMatrix[1][1]:F2}" : "--";
+    public string LeftFy => LeftCameraMatrix.Length == 9 ? $"{LeftCameraMatrix[1,1]:F2}" : "--";
 
     /// <summary>左相机主点 X 坐标（像素）</summary>
-    public string LeftCx => LeftCameraMatrix.Length > 0 && LeftCameraMatrix[0].Length > 2 ? $"{LeftCameraMatrix[0][2]:F2}" : "--";
+    public string LeftCx => LeftCameraMatrix.Length == 9 ? $"{LeftCameraMatrix[0,2]:F2}" : "--";
 
     /// <summary>左相机主点 Y 坐标（像素）</summary>
-    public string LeftCy => LeftCameraMatrix.Length > 1 && LeftCameraMatrix[1].Length > 2 ? $"{LeftCameraMatrix[1][2]:F2}" : "--";
+    public string LeftCy => LeftCameraMatrix.Length == 9 ? $"{LeftCameraMatrix[1,2]:F2}" : "--";
 
     // ── 左相机畸变 ──
 
@@ -110,16 +110,16 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>右相机 X 方向焦距（像素）</summary>
-    public string RightFx => RightCameraMatrix.Length > 0 ? $"{RightCameraMatrix[0][0]:F2}" : "--";
+    public string RightFx => RightCameraMatrix.Length == 9 ? $"{RightCameraMatrix[0,0]:F2}" : "--";
 
     /// <summary>右相机 Y 方向焦距（像素）</summary>
-    public string RightFy => RightCameraMatrix.Length > 1 && RightCameraMatrix[1].Length > 1 ? $"{RightCameraMatrix[1][1]:F2}" : "--";
+    public string RightFy => RightCameraMatrix.Length == 9 ? $"{RightCameraMatrix[1,1]:F2}" : "--";
 
     /// <summary>右相机主点 X 坐标（像素）</summary>
-    public string RightCx => RightCameraMatrix.Length > 0 && RightCameraMatrix[0].Length > 2 ? $"{RightCameraMatrix[0][2]:F2}" : "--";
+    public string RightCx => RightCameraMatrix.Length == 9 ? $"{RightCameraMatrix[0,2]:F2}" : "--";
 
     /// <summary>右相机主点 Y 坐标（像素）</summary>
-    public string RightCy => RightCameraMatrix.Length > 1 && RightCameraMatrix[1].Length > 2 ? $"{RightCameraMatrix[1][2]:F2}" : "--";
+    public string RightCy => RightCameraMatrix.Length == 9 ? $"{RightCameraMatrix[1,2]:F2}" : "--";
 
     // ── 右相机畸变 ──
 
@@ -143,31 +143,31 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>旋转矩阵 R 第1行第1列</summary>
-    public string R11 => RotationMatrix.Length > 0 && RotationMatrix[0].Length > 0 ? $"{RotationMatrix[0][0]:F6}" : "--";
+    public string R11 => RotationMatrix.Length == 9 ? $"{RotationMatrix[0,0]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第1行第2列</summary>
-    public string R12 => RotationMatrix.Length > 0 && RotationMatrix[0].Length > 1 ? $"{RotationMatrix[0][1]:F6}" : "--";
+    public string R12 => RotationMatrix.Length == 9 ? $"{RotationMatrix[0,1]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第1行第3列</summary>
-    public string R13 => RotationMatrix.Length > 0 && RotationMatrix[0].Length > 2 ? $"{RotationMatrix[0][2]:F6}" : "--";
+    public string R13 => RotationMatrix.Length == 9 ? $"{RotationMatrix[0,2]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第2行第1列</summary>
-    public string R21 => RotationMatrix.Length > 1 && RotationMatrix[1].Length > 0 ? $"{RotationMatrix[1][0]:F6}" : "--";
+    public string R21 => RotationMatrix.Length == 9 ? $"{RotationMatrix[1,0]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第2行第2列</summary>
-    public string R22 => RotationMatrix.Length > 1 && RotationMatrix[1].Length > 1 ? $"{RotationMatrix[1][1]:F6}" : "--";
+    public string R22 => RotationMatrix.Length == 9 ? $"{RotationMatrix[1,1]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第2行第3列</summary>
-    public string R23 => RotationMatrix.Length > 1 && RotationMatrix[1].Length > 2 ? $"{RotationMatrix[1][2]:F6}" : "--";
+    public string R23 => RotationMatrix.Length == 9 ? $"{RotationMatrix[1,2]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第3行第1列</summary>
-    public string R31 => RotationMatrix.Length > 2 && RotationMatrix[2].Length > 0 ? $"{RotationMatrix[2][0]:F6}" : "--";
+    public string R31 => RotationMatrix.Length == 9 ? $"{RotationMatrix[2,0]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第3行第2列</summary>
-    public string R32 => RotationMatrix.Length > 2 && RotationMatrix[2].Length > 1 ? $"{RotationMatrix[2][1]:F6}" : "--";
+    public string R32 => RotationMatrix.Length == 9 ? $"{RotationMatrix[2,1]:F6}" : "--";
 
     /// <summary>旋转矩阵 R 第3行第3列</summary>
-    public string R33 => RotationMatrix.Length > 2 && RotationMatrix[2].Length > 2 ? $"{RotationMatrix[2][2]:F6}" : "--";
+    public string R33 => RotationMatrix.Length == 9 ? $"{RotationMatrix[2,2]:F6}" : "--";
 
     // ═══════════════════════════════════════════════
     //  派生属性 — 平移向量 T (3 个分量)
@@ -187,69 +187,69 @@ public partial class StereoCalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>本质矩阵 E 第1行第1列</summary>
-    public string E11 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 0 ? $"{EssentialMatrix[0][0]:F6}" : "--";
+    public string E11 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[0,0]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第1行第2列</summary>
-    public string E12 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 1 ? $"{EssentialMatrix[0][1]:F6}" : "--";
+    public string E12 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[0,1]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第1行第3列</summary>
-    public string E13 => EssentialMatrix.Length > 0 && EssentialMatrix[0].Length > 2 ? $"{EssentialMatrix[0][2]:F6}" : "--";
+    public string E13 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[0,2]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第2行第1列</summary>
-    public string E21 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 0 ? $"{EssentialMatrix[1][0]:F6}" : "--";
+    public string E21 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[1,0]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第2行第2列</summary>
-    public string E22 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 1 ? $"{EssentialMatrix[1][1]:F6}" : "--";
+    public string E22 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[1,1]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第2行第3列</summary>
-    public string E23 => EssentialMatrix.Length > 1 && EssentialMatrix[1].Length > 2 ? $"{EssentialMatrix[1][2]:F6}" : "--";
+    public string E23 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[1,2]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第3行第1列</summary>
-    public string E31 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 0 ? $"{EssentialMatrix[2][0]:F6}" : "--";
+    public string E31 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[2,0]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第3行第2列</summary>
-    public string E32 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 1 ? $"{EssentialMatrix[2][1]:F6}" : "--";
+    public string E32 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[2,1]:F6}" : "--";
 
     /// <summary>本质矩阵 E 第3行第3列</summary>
-    public string E33 => EssentialMatrix.Length > 2 && EssentialMatrix[2].Length > 2 ? $"{EssentialMatrix[2][2]:F6}" : "--";
+    public string E33 => EssentialMatrix.Length == 9 ? $"{EssentialMatrix[2,2]:F6}" : "--";
 
     // ═══════════════════════════════════════════════
     //  派生属性 — 基础矩阵 F (3×3)，9 个分量
     // ═══════════════════════════════════════════════
 
     /// <summary>基础矩阵 F 第1行第1列</summary>
-    public string F11 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 0 ? $"{FundamentalMatrix[0][0]:F6}" : "--";
+    public string F11 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[0,0]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第1行第2列</summary>
-    public string F12 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 1 ? $"{FundamentalMatrix[0][1]:F6}" : "--";
+    public string F12 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[0,1]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第1行第3列</summary>
-    public string F13 => FundamentalMatrix.Length > 0 && FundamentalMatrix[0].Length > 2 ? $"{FundamentalMatrix[0][2]:F6}" : "--";
+    public string F13 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[0,2]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第2行第1列</summary>
-    public string F21 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 0 ? $"{FundamentalMatrix[1][0]:F6}" : "--";
+    public string F21 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[1,0]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第2行第2列</summary>
-    public string F22 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 1 ? $"{FundamentalMatrix[1][1]:F6}" : "--";
+    public string F22 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[1,1]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第2行第3列</summary>
-    public string F23 => FundamentalMatrix.Length > 1 && FundamentalMatrix[1].Length > 2 ? $"{FundamentalMatrix[1][2]:F6}" : "--";
+    public string F23 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[1,2]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第3行第1列</summary>
-    public string F31 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 0 ? $"{FundamentalMatrix[2][0]:F6}" : "--";
+    public string F31 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[2,0]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第3行第2列</summary>
-    public string F32 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 1 ? $"{FundamentalMatrix[2][1]:F6}" : "--";
+    public string F32 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[2,1]:F6}" : "--";
 
     /// <summary>基础矩阵 F 第3行第3列</summary>
-    public string F33 => FundamentalMatrix.Length > 2 && FundamentalMatrix[2].Length > 2 ? $"{FundamentalMatrix[2][2]:F6}" : "--";
+    public string F33 => FundamentalMatrix.Length == 9 ? $"{FundamentalMatrix[2,2]:F6}" : "--";
 
     // ═══════════════════════════════════════════════
     //  属性变更回调
     // ═══════════════════════════════════════════════
 
     /// <summary>LeftCameraMatrix 变化时，通知左相机内参派生属性更新</summary>
-    partial void OnLeftCameraMatrixChanged(double[][] value)
+    partial void OnLeftCameraMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(LeftFx));
         OnPropertyChanged(nameof(LeftFy));
@@ -268,7 +268,7 @@ public partial class StereoCalibrationParams : ObservableObject
     }
 
     /// <summary>RightCameraMatrix 变化时，通知右相机内参派生属性更新</summary>
-    partial void OnRightCameraMatrixChanged(double[][] value)
+    partial void OnRightCameraMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(RightFx));
         OnPropertyChanged(nameof(RightFy));
@@ -287,7 +287,7 @@ public partial class StereoCalibrationParams : ObservableObject
     }
 
     /// <summary>RotationMatrix 变化时，通知所有 R 分量派生属性更新</summary>
-    partial void OnRotationMatrixChanged(double[][] value)
+    partial void OnRotationMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(R11)); OnPropertyChanged(nameof(R12)); OnPropertyChanged(nameof(R13));
         OnPropertyChanged(nameof(R21)); OnPropertyChanged(nameof(R22)); OnPropertyChanged(nameof(R23));
@@ -303,7 +303,7 @@ public partial class StereoCalibrationParams : ObservableObject
     }
 
     /// <summary>EssentialMatrix 变化时，通知所有 E 分量派生属性更新</summary>
-    partial void OnEssentialMatrixChanged(double[][] value)
+    partial void OnEssentialMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(E11)); OnPropertyChanged(nameof(E12)); OnPropertyChanged(nameof(E13));
         OnPropertyChanged(nameof(E21)); OnPropertyChanged(nameof(E22)); OnPropertyChanged(nameof(E23));
@@ -311,7 +311,7 @@ public partial class StereoCalibrationParams : ObservableObject
     }
 
     /// <summary>FundamentalMatrix 变化时，通知所有 F 分量派生属性更新</summary>
-    partial void OnFundamentalMatrixChanged(double[][] value)
+    partial void OnFundamentalMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(F11)); OnPropertyChanged(nameof(F12)); OnPropertyChanged(nameof(F13));
         OnPropertyChanged(nameof(F21)); OnPropertyChanged(nameof(F22)); OnPropertyChanged(nameof(F23));

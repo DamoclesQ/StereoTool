@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using StereoTool.Models;
 using OpenCvSharp;
+using StereoTool.Utils;
 
 namespace StereoTool.Services;
 
@@ -48,7 +49,7 @@ public class DistanceService : IDisposable
     public async Task<double> MeasureDistanceAsync(
         string leftImagePath,
         string rightImagePath,
-        StereoParameters calib,
+        StereoCalibrationParams calib,
         Point2f pixelPoint)
     {
         // 参数验证放在 Task.Run 外部，尽早暴露错误
@@ -195,54 +196,6 @@ public class DistanceService : IDisposable
         });
     }
 
-    /// <summary>
-    /// 计算左右图像的视差图。
-    /// </summary>
-    /// <param name="leftImagePath">左图像文件路径</param>
-    /// <param name="rightImagePath">右图像文件路径</param>
-    /// <param name="calib">双目标定结果</param>
-    /// <returns>包含 CV_32F 视差图、Q 矩阵和校正参数的 DisparityResult</returns>
-    public DisparityResult GenerateDisparity(string leftImagePath, string rightImagePath, StereoParameters calib)
-    {
-        if (!File.Exists(leftImagePath))
-            throw new ArgumentException($"左图像文件不存在: {leftImagePath}", nameof(leftImagePath));
-        if (!File.Exists(rightImagePath))
-            throw new ArgumentException($"右图像文件不存在: {rightImagePath}", nameof(rightImagePath));
-
-        using var leftColor = Cv2.ImRead(leftImagePath, ImreadModes.Color);
-        using var rightColor = Cv2.ImRead(rightImagePath, ImreadModes.Color);
-
-        if (leftColor.Empty())
-            throw new InvalidOperationException($"左图像加载失败: {leftImagePath}");
-        if (rightColor.Empty())
-            throw new InvalidOperationException($"右图像加载失败: {rightImagePath}");
-
-        using var leftGray = new Mat();
-        using var rightGray = new Mat();
-        Cv2.CvtColor(leftColor, leftGray, ColorConversionCodes.BGR2GRAY);
-        Cv2.CvtColor(rightColor, rightGray, ColorConversionCodes.BGR2GRAY);
-
-        var (Q, map1L, map2L, map1R, map2R) = PerformStereoRectify(calib);
-        Q.Dispose();
-        using (map1L) using (map2L) using (map1R) using (map2R)
-        {
-            using var rectLeft = new Mat();
-            using var rectRight = new Mat();
-            Cv2.Remap(leftGray, rectLeft, map1L, map2L, InterpolationFlags.Linear);
-            Cv2.Remap(rightGray, rectRight, map1R, map2R, InterpolationFlags.Linear);
-
-            using var sgbm = StereoSGBM.Create(
-                SgbmMinDisparity, SgbmNumDisparities, SgbmBlockSize,
-                8 * 3 * SgbmBlockSize * SgbmBlockSize,
-                32 * 3 * SgbmBlockSize * SgbmBlockSize,
-                1, 63, 10, 100, 32, 0);
-
-            var disparity = new Mat();
-            sgbm.Compute(rectLeft, rectRight, disparity);
-            return disparity;
-        }
-    }
-
     // ═══════════════════════════════════════════════════════════════════
     // 私有方法 — 校正参数缓存
     // ═══════════════════════════════════════════════════════════════════
@@ -279,12 +232,12 @@ public class DistanceService : IDisposable
     /// </summary>
     private static StereoRectifyResult PerformStereoRectifyFull(StereoCalibrationParams calib)
     {
-        var leftCam = CalibrationService.Array2DToMat(calib.LeftCameraMatrix);
-        var leftDist = CalibrationService.Array1DToMat(calib.LeftDistCoeffs);
-        var rightCam = CalibrationService.Array2DToMat(calib.RightCameraMatrix);
-        var rightDist = CalibrationService.Array1DToMat(calib.RightDistCoeffs);
-        using var R = CalibrationService.Array2DToMat(calib.RotationMatrix);
-        using var T = CalibrationService.Array1DToMat(calib.TranslationVector);
+        var leftCam = calib.LeftCameraMatrix.ToMat();
+        var leftDist = calib.LeftDistCoeffs.ToMat();
+        var rightCam = calib.RightCameraMatrix.ToMat();
+        var rightDist = calib.RightDistCoeffs.ToMat();
+        using var R = calib.RotationMatrix.ToMat();
+        using var T = calib.TranslationVector.ToMat();
 
         var imageSize = new Size(calib.ImageWidth, calib.ImageHeight);
         var R1 = new Mat(); var R2 = new Mat();
@@ -309,14 +262,14 @@ public class DistanceService : IDisposable
     /// <summary>
     /// 执行双目立体校正（精简版），仅返回重映射表和 Q 矩阵。
     /// </summary>
-    private static (Mat Q, Mat map1L, Mat map2L, Mat map1R, Mat map2R) PerformStereoRectify(StereoParameters calib)
+    private static (Mat Q, Mat map1L, Mat map2L, Mat map1R, Mat map2R) PerformStereoRectify(StereoCalibrationParams calib)
     {
-        using var leftCam = CalibrationService.Array2DToMat(calib.LeftCameraMatrix);
-        using var leftDist = CalibrationService.Array1DToMat(calib.LeftDistCoeffs);
-        using var rightCam = CalibrationService.Array2DToMat(calib.RightCameraMatrix);
-        using var rightDist = CalibrationService.Array1DToMat(calib.RightDistCoeffs);
-        using var R = CalibrationService.Array2DToMat(calib.RotationMatrix);
-        using var T = CalibrationService.Array1DToMat(calib.TranslationVector);
+        using var leftCam = calib.LeftCameraMatrix.ToMat();
+        using var leftDist = calib.LeftDistCoeffs.ToMat();
+        using var rightCam = calib.RightCameraMatrix.ToMat();
+        using var rightDist = calib.RightDistCoeffs.ToMat();
+        using var R = calib.RotationMatrix.ToMat();
+        using var T = calib.TranslationVector.ToMat();
 
         var imageSize = new Size(calib.ImageWidth, calib.ImageHeight);
         var R1 = new Mat(); var R2 = new Mat();

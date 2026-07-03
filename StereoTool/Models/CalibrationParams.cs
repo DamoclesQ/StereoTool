@@ -41,7 +41,7 @@ public partial class CalibrationParams : ObservableObject
     #region 标定结果参数
 
     /// <summary>相机内参矩阵 (3x3)</summary>
-    [ObservableProperty] private double[][] _cameraMatrix = [];
+    [ObservableProperty] private double[,] _cameraMatrix = new double[3, 3];
 
     /// <summary>相机畸变系数 (5 个：k1, k2, p1, p2, k3)</summary>
     [ObservableProperty] private double[] _distCoeffs = [];
@@ -60,16 +60,16 @@ public partial class CalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>X 方向焦距（像素）</summary>
-    public string Fx => CameraMatrix.Length > 0 ? $"{CameraMatrix[0][0]:F2}" : "--";
+    public string Fx => CameraMatrix.Length == 9 ? $"{CameraMatrix[0,0]:F2}" : "--";
 
     /// <summary>Y 方向焦距（像素）</summary>
-    public string Fy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 1 ? $"{CameraMatrix[1][1]:F2}" : "--";
+    public string Fy => CameraMatrix.Length == 9 ? $"{CameraMatrix[1,1]:F2}" : "--";
 
     /// <summary>主点 X 坐标（像素）</summary>
-    public string Cx => CameraMatrix.Length > 0 && CameraMatrix[0].Length > 2 ? $"{CameraMatrix[0][2]:F2}" : "--";
+    public string Cx => CameraMatrix.Length == 9 ? $"{CameraMatrix[0,2]:F2}" : "--";
 
     /// <summary>主点 Y 坐标（像素）</summary>
-    public string Cy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 2 ? $"{CameraMatrix[1][2]:F2}" : "--";
+    public string Cy => CameraMatrix.Length == 9 ? $"{CameraMatrix[1,2]:F2}" : "--";
 
     // ── 畸变系数 ──
 
@@ -93,7 +93,7 @@ public partial class CalibrationParams : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>CameraMatrix 变化时，通知所有内参派生属性更新</summary>
-    partial void OnCameraMatrixChanged(double[][] value)
+    partial void OnCameraMatrixChanged(double[,] value)
     {
         OnPropertyChanged(nameof(Fx));
         OnPropertyChanged(nameof(Fy));

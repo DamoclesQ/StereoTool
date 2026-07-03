@@ -1,0 +1,49 @@
+%YAML:1.0
+---
+LeftCameraMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+RightCameraMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+LeftDistCoeffs: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ 0., 0., 0., 0., 0. ]
+RightDistCoeffs: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ 0., 0., 0., 0., 0. ]
+RotationMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]
+TranslationVector: !!opencv-matrix
+   rows: 3
+   cols: 1
+   dt: d
+   data: [ 0., 0., 0. ]
+EssentialMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+FundamentalMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0., 0. ]
+ImageWidth: 640
+ImageHeight: 480
+ReprojectionError: 418.6481036906136
+CornerCols: 9
+CornerRows: 6
+SquareSize: 40.
+PixelSizeUm: 2.3999999999999999

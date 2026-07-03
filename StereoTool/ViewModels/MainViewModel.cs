@@ -56,7 +56,7 @@ public partial class MainViewModel : ObservableObject
     private void NavigateCalibration()
     {
         SelectedNavItem = "标定";
-        var page = _serviceProvider.GetService<CalibrationPage>();
+        var page = _serviceProvider.GetService<StereoCalibrationPage>();
         CurrentPage = page;
         NavigateRequested?.Invoke("Calibration");
     }
@@ -80,7 +80,7 @@ public partial class MainViewModel : ObservableObject
     private void NavigateMonoCalibration()
     {
         SelectedNavItem = "单目标定";
-        var page = _serviceProvider.GetService<MonoCalibrationPage>();
+        var page = _serviceProvider.GetService<CalibrationPage>();
         CurrentPage = page;
         NavigateRequested?.Invoke("MonoCalibration");
     }

@@ -88,6 +88,12 @@ public partial class DistanceViewModel : ObservableObject
     /// <summary>右图标记点是否可见</summary>
     [ObservableProperty] private bool _rightMarkerVisible;
 
+
+    public string LeftFocalMm => LoadedCalibration != null && LoadedCalibration.PixelSizeUm > 0
+        ? $"{LoadedCalibration.LeftCameraMatrix[0, 0] * LoadedCalibration.PixelSizeUm / 1000.0:F2}" : "--";
+    public string RightFocalMm => LoadedCalibration != null && LoadedCalibration.PixelSizeUm > 0
+        ? $"{LoadedCalibration.RightCameraMatrix[0, 0] * LoadedCalibration.PixelSizeUm / 1000.0:F2}" : "--";
+
     // ═══════════════════════════════════════════════
     //  派生属性 — 标定参数展示
     // ═══════════════════════════════════════════════
@@ -97,8 +103,7 @@ public partial class DistanceViewModel : ObservableObject
     // ── 内参/畸变/外参的派生属性已由 StereoParameters 内置提供，通过 LoadedCalibration 访问 ──
 
     /// <summary>重投影误差显示</summary>
-    public string ReprojectionErrorDisplay => LoadedCalibration != null
-        ? $"{LoadedCalibration.ReprojectionError:F4} 像素" : "--";
+    public string ReprojectionErrorDisplay => LoadedCalibration != null ? $"{LoadedCalibration.ReprojectionError:F4} 像素" : "--";
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
     partial void OnLoadedCalibrationChanged(StereoCalibrationParams? value)
@@ -116,9 +121,7 @@ public partial class DistanceViewModel : ObservableObject
     /// </summary>
     /// <param name="calibrationService">标定服务（用于加载 JSON 标定文件）</param>
     /// <param name="distanceService">测距服务（用于执行立体匹配与距离计算）</param>
-    public DistanceViewModel(
-        CalibrationService calibrationService,
-        DistanceService distanceService)
+    public DistanceViewModel(CalibrationService calibrationService, DistanceService distanceService)
     {
         _calibrationService = calibrationService;
         _distanceService = distanceService;
@@ -146,7 +149,7 @@ public partial class DistanceViewModel : ObservableObject
 
         try
         {
-            LoadedCalibration = _calibrationService.LoadCalibrationResult(dialog.FileName);
+            LoadedCalibration = _calibrationService.LoadStereoCalibrationParams(dialog.FileName);
             CalibrationFilePath = dialog.FileName;
             StatusText = $"标定文件已加载：{Path.GetFileName(dialog.FileName)}（{LoadedCalibration.ImageWidth}×{LoadedCalibration.ImageHeight}）";
         }
