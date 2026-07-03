@@ -53,7 +53,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
 
     /// <summary>标定完成后的结果对象</summary>
     [ObservableProperty]
-    private CameraParameters? _calibrationResult;
+    private CalibrationParams? _calibrationResult;
 
     /// <summary>标定进度值（0-100）</summary>
     [ObservableProperty]
@@ -95,7 +95,7 @@ public partial class MonoCalibrationViewModel : ObservableObject
     // ═══════════════════════════════════════════════
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(CameraParameters? value)
+    partial void OnCalibrationResultChanged(CalibrationParams? value)
     {
         OnPropertyChanged(nameof(FocalMm));
         OnPropertyChanged(nameof(HasCalibrationResult));

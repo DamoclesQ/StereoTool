@@ -56,7 +56,7 @@ public partial class CalibrationViewModel : ObservableObject
 
     /// <summary>标定完成后的结果对象</summary>
     [ObservableProperty]
-    private StereoParameters? _calibrationResult;
+    private StereoCalibrationParams? _calibrationResult;
 
     /// <summary>标定进度值（0-100）</summary>
     [ObservableProperty]
@@ -103,7 +103,7 @@ public partial class CalibrationViewModel : ObservableObject
     // ── 外参/畸变的派生属性已由 StereoParameters 内置提供 ──
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(StereoParameters? value)
+    partial void OnCalibrationResultChanged(StereoCalibrationParams? value)
     {
         OnPropertyChanged(nameof(LeftFocalMm));
         OnPropertyChanged(nameof(RightFocalMm));

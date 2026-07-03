@@ -43,7 +43,7 @@ public partial class DistanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _rightImagePath = string.Empty;
 
     /// <summary>已加载的标定结果对象</summary>
-    [ObservableProperty] private StereoParameters? _loadedCalibration;
+    [ObservableProperty] private StereoCalibrationParams? _loadedCalibration;
 
     /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
     [ObservableProperty] private System.Drawing.Point _selectedPoint;
@@ -113,7 +113,7 @@ public partial class DistanceViewModel : ObservableObject, IDisposable
         ? $"{LoadedCalibration.ReprojectionError:F4} 像素" : "--";
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnLoadedCalibrationChanged(StereoParameters? value)
+    partial void OnLoadedCalibrationChanged(StereoCalibrationParams? value)
     {
         OnPropertyChanged(nameof(LeftFocalMm));
         OnPropertyChanged(nameof(RightFocalMm));

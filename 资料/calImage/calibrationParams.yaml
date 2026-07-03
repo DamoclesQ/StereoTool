@@ -1,0 +1,23 @@
+%YAML:1.0
+---
+CameraMatrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 898.2724162011358, 0., 293.14030095972004, 0.,
+       907.45081007306737, 246.03545221690473, 0., 0., 1. ]
+DistCoeffs: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ -0.4003077350206215, -0.047169469999135141,
+       0.00097843850482049973, -0.0028581850449947536,
+       1.2842567907934657 ]
+ImageWidth: 640
+ImageHeight: 480
+ReprojectionError: 0.35981799596385206
+CornerCols: 9
+CornerRows: 6
+SquareSize: 40.
+PixelSizeUm: 2.3999999999999999
+CalibrationTime: "2026-07-03 10:27:46"

@@ -1,4 +1,4 @@
-using OpenCvSharp;
+﻿using OpenCvSharp;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StereoTool.Models;
@@ -8,43 +8,52 @@ namespace StereoTool.Models;
 /// 包含相机内参矩阵和畸变系数、重投影误差和图像尺寸。
 /// 内置用于 WPF 绑定的派生属性，当原始数据变化时自动刷新所有显示值。
 /// </summary>
-public partial class CameraParameters : ObservableObject
+public partial class CalibrationParams : ObservableObject
 {
-    /// <summary>相机内参矩阵 (3x3)</summary>
-    [ObservableProperty]
-    private double[][] _cameraMatrix = [];
-
-    /// <summary>相机畸变系数 (5 个：k1, k2, p1, p2, k3)</summary>
-    [ObservableProperty]
-    private double[] _distCoeffs = [];
-
-    /// <summary>标定图像的宽度（像素）</summary>
-    [ObservableProperty]
-    private int _imageWidth;
-
-    /// <summary>标定图像的高度（像素）</summary>
-    [ObservableProperty]
-    private int _imageHeight;
-
-    /// <summary>重投影误差 RMS（像素），值越小标定越精确</summary>
-    [ObservableProperty]
-    private double _reprojectionError;
+    #region 棋盘格参数
 
     /// <summary>棋盘格内角点列数（宽度方向）</summary>
-    [ObservableProperty]
-    private int _cornerCols;
+    [ObservableProperty] private int _cornerCols;
 
     /// <summary>棋盘格内角点行数（高度方向）</summary>
-    [ObservableProperty]
-    private int _cornerRows;
+    [ObservableProperty] private int _cornerRows;
 
     /// <summary>棋盘格每格物理尺寸（单位：mm）</summary>
-    [ObservableProperty]
-    private double _squareSize;
+    [ObservableProperty] private double _squareSize;
+
+    #endregion
+
+
+    #region 采集参数
+
+    /// <summary>标定图像的宽度（像素）</summary>
+    [ObservableProperty] private int _imageWidth;
+
+    /// <summary>标定图像的高度（像素）</summary>
+    [ObservableProperty] private int _imageHeight;
 
     /// <summary>相机传感器像元尺寸（单位：μm），设为 0 表示未提供</summary>
-    [ObservableProperty]
-    private double _pixelSizeUm;
+    [ObservableProperty] private double _pixelSizeUm;
+
+    #endregion
+
+
+    #region 标定结果参数
+
+    /// <summary>相机内参矩阵 (3x3)</summary>
+    [ObservableProperty] private double[][] _cameraMatrix = [];
+
+    /// <summary>相机畸变系数 (5 个：k1, k2, p1, p2, k3)</summary>
+    [ObservableProperty] private double[] _distCoeffs = [];
+
+    /// <summary>重投影误差 RMS（像素），值越小标定越精确</summary>
+    [ObservableProperty] private double _reprojectionError;
+
+    /// <summary>标定时间</summary>
+    [ObservableProperty] private double _calibrationTime; 
+
+    #endregion
+
 
     // ═══════════════════════════════════════════════
     //  派生属性 — WPF 绑定用（string 格式化）
@@ -54,16 +63,13 @@ public partial class CameraParameters : ObservableObject
     public string Fx => CameraMatrix.Length > 0 ? $"{CameraMatrix[0][0]:F2}" : "--";
 
     /// <summary>Y 方向焦距（像素）</summary>
-    public string Fy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 1
-        ? $"{CameraMatrix[1][1]:F2}" : "--";
+    public string Fy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 1 ? $"{CameraMatrix[1][1]:F2}" : "--";
 
     /// <summary>主点 X 坐标（像素）</summary>
-    public string Cx => CameraMatrix.Length > 0 && CameraMatrix[0].Length > 2
-        ? $"{CameraMatrix[0][2]:F2}" : "--";
+    public string Cx => CameraMatrix.Length > 0 && CameraMatrix[0].Length > 2 ? $"{CameraMatrix[0][2]:F2}" : "--";
 
     /// <summary>主点 Y 坐标（像素）</summary>
-    public string Cy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 2
-        ? $"{CameraMatrix[1][2]:F2}" : "--";
+    public string Cy => CameraMatrix.Length > 1 && CameraMatrix[1].Length > 2 ? $"{CameraMatrix[1][2]:F2}" : "--";
 
     // ── 畸变系数 ──
 

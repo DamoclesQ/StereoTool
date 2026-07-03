@@ -28,7 +28,7 @@ public class DistanceService : IDisposable
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>上次使用的标定结果引用（用于判断是否需要重算）</summary>
-    private StereoParameters? _cachedCalib;
+    private StereoCalibrationParams? _cachedCalib;
     /// <summary>缓存的校正参数，切换标定结果时自动重建</summary>
     private StereoRectifyResult? _cachedRectifyResult;
 
@@ -43,7 +43,7 @@ public class DistanceService : IDisposable
     /// <param name="leftPoint">左图像上的像素坐标</param>
     /// <param name="rightPoint">右图像上的像素坐标</param>
     /// <returns>空间距离（米），坐标越界或计算失败时返回 NaN</returns>
-    public async Task<double> MeasureDistanceFromPointsAsync(StereoParameters calib, Point2f leftPoint, Point2f rightPoint)
+    public async Task<double> MeasureDistanceFromPointsAsync(StereoCalibrationParams calib, Point2f leftPoint, Point2f rightPoint)
     {
         if (leftPoint.X < 0 || leftPoint.X >= calib.ImageWidth ||
             leftPoint.Y < 0 || leftPoint.Y >= calib.ImageHeight)
@@ -85,7 +85,7 @@ public class DistanceService : IDisposable
     /// <param name="rightImagePath">右图像文件路径</param>
     /// <param name="calib">双目标定结果</param>
     /// <returns>包含 CV_32F 视差图、Q 矩阵和校正参数的 DisparityResult</returns>
-    public DisparityResult GenerateDisparity(string leftImagePath, string rightImagePath, StereoParameters calib)
+    public DisparityResult GenerateDisparity(string leftImagePath, string rightImagePath, StereoCalibrationParams calib)
     {
         // ── 参数验证 ──
         if (!File.Exists(leftImagePath))
@@ -198,7 +198,7 @@ public class DistanceService : IDisposable
     /// 获取立体校正参数（带缓存）。
     /// 当标定结果未变时直接返回缓存，避免重复执行 StereoRectify 和 InitUndistortRectifyMap。
     /// </summary>
-    private StereoRectifyResult GetRectifyParams(StereoParameters calib)
+    private StereoRectifyResult GetRectifyParams(StereoCalibrationParams calib)
     {
         if (ReferenceEquals(_cachedCalib, calib) && _cachedRectifyResult != null)
             return _cachedRectifyResult;
@@ -224,7 +224,7 @@ public class DistanceService : IDisposable
     /// <summary>
     /// 执行双目立体校正，返回完整的校正参数。
     /// </summary>
-    private static StereoRectifyResult PerformStereoRectifyFull(StereoParameters calib)
+    private static StereoRectifyResult PerformStereoRectifyFull(StereoCalibrationParams calib)
     {
         var leftCam = CalibrationService.Array2DToMat(calib.LeftCameraMatrix);
         var leftDist = CalibrationService.Array1DToMat(calib.LeftDistCoeffs);

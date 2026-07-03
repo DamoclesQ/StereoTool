@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using OpenCvSharp;
 using StereoTool.Models;
 
@@ -40,6 +40,7 @@ public class CalibrationService
         var node = fs[key];
         return node.IsNone ? defaultValue : node.ReadDouble();
     }
+
     // 公有方法
     // ═══════════════════════════════════════════════════════════════════
 
@@ -66,7 +67,7 @@ public class CalibrationService
     /// <exception cref="OperationCanceledException">
     /// 通过 <paramref name="ct"/> 取消操作时抛出。
     /// </exception>
-    public async Task<StereoParameters> CalibrateAsync(
+    public async Task<StereoCalibrationParams> StereoCalibrateAsync(
         IEnumerable<string> imagePaths,
         ChessboardConfig config,
         IProgress<int>? progress = null,
@@ -81,7 +82,7 @@ public class CalibrationService
                 nameof(imagePaths));
 
         // 在后台线程中执行耗时计算，避免阻塞 UI
-        return await Task.Run(() =>
+        return await Task.Run((Func<StereoCalibrationParams>)(() =>
         {
             ct.ThrowIfCancellationRequested();
             // ── 阶段 1：分离左右图像 ──
@@ -182,7 +183,7 @@ public class CalibrationService
 
             // ── 阶段 6：封装结果 ──
             // 将 OpenCV Mat 转换为 C# 基础数据类型，方便 JSON/内存传递
-            var result = new StereoParameters
+            var result = new StereoCalibrationParams
             {
                 LeftCameraMatrix = MatToArray2D(leftCam),
                 LeftDistCoeffs = MatToArray1D(leftDist),
@@ -194,7 +195,6 @@ public class CalibrationService
                 FundamentalMatrix = MatToArray2D(F),
                 ImageWidth = imageSize.Width,
                 ImageHeight = imageSize.Height,
-                SkippedPairCount = skippedPairs,     // 记录跳过的图片对数量
                 ReprojectionError = reprojectionError,
                 CornerCols = config.CornerCols,
                 CornerRows = config.CornerRows,
@@ -213,7 +213,7 @@ public class CalibrationService
             foreach (var m in rightImgMats) m.Dispose();
 
             return result;
-        }, ct);
+        }), ct);
     }
 
     /// <summary>
@@ -231,11 +231,11 @@ public class CalibrationService
     /// <paramref name="pairs"/> 数量不足 3 对时抛出。
     /// </exception>
     /// <remarks>
-    /// 此方法是 <see cref="CalibrateAsync"/> 的缓存版本——角点检测已由 ViewModel 的
+    /// 此方法是 <see cref="StereoCalibrateAsync"/> 的缓存版本——角点检测已由 ViewModel 的
     /// "检测角点" 按钮前置完成，此处直接复用检测结果进行单目和立体标定，
     /// 避免重复计算。使用场景：用户导入图像→检测角点→筛选有效对→开始标定。
     /// </remarks>
-    public async Task<StereoParameters> CalibrateFromCachedAsync(
+    public async Task<StereoCalibrationParams> CalibrateFromCachedAsync(
         List<CachedStereoPair> pairs,
         ChessboardConfig config,
         IProgress<int>? progress = null,
@@ -245,7 +245,7 @@ public class CalibrationService
             throw new InvalidOperationException(
                 $"至少需要 3 对有效图片，当前仅 {pairs.Count} 对。");
 
-        return await Task.Run(() =>
+        return await Task.Run((Func<StereoCalibrationParams>)(() =>
         {
             ct.ThrowIfCancellationRequested();
 
@@ -309,7 +309,7 @@ public class CalibrationService
 
             // ── 阶段 6：封装结果 ──
             // SkippedPairCount 固定为 0——缓存路径的图片对已经通过角点检测筛选
-            var result = new StereoParameters
+            var result = new StereoCalibrationParams
             {
                 LeftCameraMatrix = MatToArray2D(leftCam),
                 LeftDistCoeffs = MatToArray1D(leftDist),
@@ -321,7 +321,6 @@ public class CalibrationService
                 FundamentalMatrix = MatToArray2D(F),
                 ImageWidth = imageSize.Width,
                 ImageHeight = imageSize.Height,
-                SkippedPairCount = 0,
                 ReprojectionError = reprojectionError,
                 CornerCols = config.CornerCols,
                 CornerRows = config.CornerRows,
@@ -340,7 +339,7 @@ public class CalibrationService
             foreach (var m in rightImgMats) m.Dispose();
 
             return result;
-        }, ct);
+        }), ct);
     }
 
     /// <summary>
@@ -359,7 +358,7 @@ public class CalibrationService
     /// <exception cref="InvalidOperationException">
     /// cornersList 有效数量少于 3 时抛出——单目标定至少需要 3 张有效图片。
     /// </exception>
-    public async Task<CameraParameters> CalibrateMonoFromCachedAsync(
+    public async Task<CalibrationParams> CalibrateMonoFromCachedAsync(
         List<Point2f[]> cornersList,
         ChessboardConfig config,
         Size imageSize,
@@ -370,7 +369,7 @@ public class CalibrationService
             throw new InvalidOperationException(
                 $"至少需要 3 张有效图片进行单目标定，当前仅 {cornersList.Count} 张。");
 
-        return await Task.Run(() =>
+        return await Task.Run((Func<CalibrationParams>)(() =>
         {
             ct.ThrowIfCancellationRequested();
             progress?.Report(0);
@@ -398,7 +397,7 @@ public class CalibrationService
             progress?.Report(100);
 
             // ── 阶段 4：封装结果 ──
-            var result = new CameraParameters
+            var result = new CalibrationParams
             {
                 CameraMatrix = MatToArray2D(camMat),
                 DistCoeffs = MatToArray1D(distCoeffs),
@@ -417,7 +416,7 @@ public class CalibrationService
             foreach (var m in imgMats) m.Dispose();
 
             return result;
-        }, ct);
+        }), ct);
     }
 
     /// <summary>
@@ -432,7 +431,7 @@ public class CalibrationService
     /// SkippedPairCount、ReprojectionError。</para>
     /// <para>与 <see cref="LoadCalibrationResult"/> 配对使用，保证读写往返一致性。</para>
     /// </remarks>
-    public void SaveCalibrationResult(string filePath, StereoParameters result)
+    public void SaveCalibrationResult(string filePath, StereoCalibrationParams result)
     {
         // 确保目标目录存在
         var dir = Path.GetDirectoryName(filePath);
@@ -483,7 +482,7 @@ public class CalibrationService
     /// 读取顺序与 <see cref="SaveCalibrationResult"/> 写入顺序严格对应，
     /// 确保数据往返一致。字段缺失或类型不匹配将导致 OpenCV 内部异常。
     /// </remarks>
-    public StereoParameters LoadCalibrationResult(string filePath)
+    public StereoCalibrationParams LoadCalibrationResult(string filePath)
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"标定文件未找到: {filePath}", filePath);
@@ -503,7 +502,7 @@ public class CalibrationService
         using var F = fs["FundamentalMatrix"].ReadMat();
 
         // 将 Mat 转换为 C# 基础类型后立即释放 Mat，避免内存泄漏
-        return new StereoParameters
+        return new StereoCalibrationParams
         {
             LeftCameraMatrix = MatToArray2D(leftCam),
             RightCameraMatrix = MatToArray2D(rightCam),
@@ -515,7 +514,6 @@ public class CalibrationService
             FundamentalMatrix = MatToArray2D(F),
             ImageWidth = fs["ImageWidth"].ReadInt(),
             ImageHeight = fs["ImageHeight"].ReadInt(),
-            SkippedPairCount = SafeReadInt(fs, "SkippedPairCount", 0),
             ReprojectionError = fs["ReprojectionError"].ReadDouble(),
             CornerCols = SafeReadInt(fs, "CornerCols", 9),
             CornerRows = SafeReadInt(fs, "CornerRows", 6),
@@ -527,7 +525,7 @@ public class CalibrationService
     /// <summary>
     /// 将单目标定结果写入 OpenCV YAML 文件。
     /// </summary>
-    public void SaveCameraParameters(string filePath, CameraParameters result)
+    public void SaveCameraParameters(string filePath, CalibrationParams result)
     {
         var dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -551,7 +549,7 @@ public class CalibrationService
     /// <summary>
     /// 从 OpenCV YAML 文件加载单目标定结果。
     /// </summary>
-    public CameraParameters LoadCameraParameters(string filePath)
+    public CalibrationParams LoadCameraParameters(string filePath)
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"标定文件未找到: {filePath}", filePath);
@@ -563,7 +561,7 @@ public class CalibrationService
         using var camMat = fs["CameraMatrix"].ReadMat();
         using var distCoeffs = fs["DistCoeffs"].ReadMat();
 
-        return new CameraParameters
+        return new CalibrationParams
         {
             CameraMatrix = MatToArray2D(camMat),
             DistCoeffs = MatToArray1D(distCoeffs),
@@ -819,7 +817,7 @@ public class CalibrationService
     /// <returns>等尺寸的 CV_64FC1 Mat。</returns>
     /// <remarks>
     /// 此方法标记为 <c>internal</c>，供 <see cref="DistanceService"/> 在立体校正时
-    /// 将 <see cref="StereoParameters"/> 中的相机参数恢复为 OpenCV Mat 格式。
+    /// 将 <see cref="StereoCalibrationParams"/> 中的相机参数恢复为 OpenCV Mat 格式。
     /// </remarks>
     internal static Mat Array2DToMat(double[][] array)
     {
