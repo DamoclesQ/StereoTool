@@ -1044,7 +1044,7 @@
                 </Grid.RowDefinitions>
 
                 <!--  图像  -->
-                <Grid>
+                <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="4" />
@@ -1174,46 +1174,54 @@
                                 Content="📷 导入右图"
                                 FontSize="12" />
                         <Separator Width="10" Background="Transparent" />
-                        <Button Width="130"
+                        <Button Width="120"
                                 Height="30"
                                 Margin="2"
-                                Background="#27AE60"
+                                Background="#e74c3c"
                                 BorderThickness="0"
-                                Command="{Binding GenerateDisparityCommand}"
-                                Content="🔍 生成视差图"
+                                Command="{Binding MeasureDistanceCommand}"
+                                Content="📏 SGBM 测距"
                                 Cursor="Hand"
                                 FontSize="12"
                                 FontWeight="SemiBold"
                                 Foreground="White" />
                         <Separator Width="10" Background="Transparent" />
-                        <Button Width="130"
-                                Height="30"
-                                Margin="2"
-                                Background="#8E24AA"
-                                BorderThickness="0"
-                                Command="{Binding SaveDisparityCommand}"
-                                Content="💾 保存视差图"
-                                Cursor="Hand"
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Foreground="White" />
-                        <Separator Width="10" Background="Transparent" />
-                        <Button Width="130"
-                                Height="30"
-                                Margin="2"
-                                Background="#3498DB"
-                                BorderThickness="0"
-                                Command="{Binding SaveXYZCommand}"
-                                Content="💾 保存XYZ"
-                                Cursor="Hand"
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Foreground="White" />
-                        <Separator Width="10" Background="Transparent" />
-                        <!--  手动测算  -->
-                        <Button Width="130"
-                                Height="30"
-                                Margin="2"
+                        <!--  手动坐标输入  -->
+                        <TextBlock Margin="0,0,4,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Text="左(X,Y):" />
+                        <TextBox Width="50"
+                                 Height="24"
+                                 Margin="1,0,6,0"
+                                 VerticalContentAlignment="Center"
+                                 Text="{Binding ManualLeftX, UpdateSourceTrigger=PropertyChanged}"
+                                 TextAlignment="Center" />
+                        <TextBox Width="50"
+                                 Height="24"
+                                 Margin="1,0,10,0"
+                                 VerticalContentAlignment="Center"
+                                 Text="{Binding ManualLeftY, UpdateSourceTrigger=PropertyChanged}"
+                                 TextAlignment="Center" />
+                        <TextBlock Margin="0,0,4,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Text="右(X,Y):" />
+                        <TextBox Width="50"
+                                 Height="24"
+                                 Margin="1,0,6,0"
+                                 VerticalContentAlignment="Center"
+                                 Text="{Binding ManualRightX, UpdateSourceTrigger=PropertyChanged}"
+                                 TextAlignment="Center" />
+                        <TextBox Width="50"
+                                 Height="24"
+                                 Margin="1,0,8,0"
+                                 VerticalContentAlignment="Center"
+                                 Text="{Binding ManualRightY, UpdateSourceTrigger=PropertyChanged}"
+                                 TextAlignment="Center" />
+                        <Button Width="90"
+                                Height="26"
+                                Margin="2,0,0,0"
                                 Background="#8E24AA"
                                 BorderThickness="0"
                                 Command="{Binding MeasureManualDistanceCommand}"
@@ -1230,39 +1238,18 @@
                             BorderThickness="1"
                             CornerRadius="4"
                             Visibility="{Binding HasDistanceResult, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition />
-                                <ColumnDefinition />
-                            </Grid.ColumnDefinitions>
-                            <WrapPanel>
-                                <TextBlock Margin="0,0,8,0"
-                                           VerticalAlignment="Center"
-                                           FontSize="13"
-                                           FontWeight="SemiBold"
-                                           Text="测量结果：" />
-                                <TextBlock VerticalAlignment="Center"
-                                           FontSize="16"
-                                           FontWeight="Bold"
-                                           Foreground="#c0392b"
-                                           Text="{Binding DistanceResult, StringFormat='{}{0:F4}'}" />
-                            </WrapPanel>
-
-                            <WrapPanel Grid.Column="1">
-                                <TextBlock Margin="0,0,8,0"
-                                           VerticalAlignment="Center"
-                                           FontSize="13"
-                                           FontWeight="SemiBold"
-                                           Text="手动测量结果：" />
-                                <TextBlock VerticalAlignment="Center"
-                                           FontSize="16"
-                                           FontWeight="Bold"
-                                           Foreground="#c0392b"
-                                           Text="{Binding ManuDistanceResult, StringFormat='{}{0:F4}'}" />
-                            </WrapPanel>
-                        </Grid>
-
-
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Margin="0,0,8,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Text="测量结果：" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="#c0392b"
+                                       Text="{Binding DistanceResult, StringFormat='{}{0:F4}'}" />
+                        </StackPanel>
                     </Border>
                 </StackPanel>
             </GroupBox>
