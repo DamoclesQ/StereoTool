@@ -37,7 +37,8 @@
                         Height="36"
                         Margin="5,3"
                         Command="{Binding ImportImagesCommand}"
-                        Content="📂 导入图片" />
+                        Content="📂 导入图片"
+                        FontWeight="SemiBold" />
                 <Button Width="120"
                         Height="36"
                         Margin="5,3"

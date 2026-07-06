@@ -18,9 +18,8 @@ public partial class DistanceViewModel : ObservableObject
     private readonly CalibrationService _calibrationService;
     private readonly DistanceService _distanceService;
 
-    // ═══════════════════════════════════════════════
-    //  绑定属性
-    // ═══════════════════════════════════════════════
+    private Mat? _disparity;
+    private Mat? _mapXyz;
 
     /// <summary>标定结果文件路径（用户从磁盘加载的 JSON 文件）</summary>
     [ObservableProperty] private string _calibrationFilePath = string.Empty;
@@ -34,6 +33,8 @@ public partial class DistanceViewModel : ObservableObject
     /// <summary>已加载的标定结果对象</summary>
     [ObservableProperty] private StereoCalibrationParams? _loadedCalibration;
 
+    public StereoRectifyResult? StereoRectifyParams;
+
     /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
     [ObservableProperty] private System.Drawing.Point _selectedPoint;
 
@@ -45,9 +46,6 @@ public partial class DistanceViewModel : ObservableObject
 
     /// <summary>状态栏文本</summary>
     [ObservableProperty] private string _statusText = "就绪 — 请加载标定文件并导入双目图像";
-
-    /// <summary>是否正在执行异步操作</summary>
-    [ObservableProperty] private bool _isBusy;
 
     /// <summary>左相机图像源（WPF 绑定用 BitmapSource）</summary>
     [ObservableProperty] private BitmapSource? _leftImage;
@@ -109,12 +107,14 @@ public partial class DistanceViewModel : ObservableObject
     partial void OnLoadedCalibrationChanged(StereoCalibrationParams? value)
     {
         OnPropertyChanged(nameof(HasCalibration));
+        OnPropertyChanged(nameof(LeftFocalMm));
+        OnPropertyChanged(nameof(RightFocalMm));
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
+
+        if(LoadedCalibration != null) 
+            StereoRectifyParams = _distanceService.GetRectifyParams(LoadedCalibration);
     }
 
-    // ═══════════════════════════════════════════════
-    //  构造器
-    // ═══════════════════════════════════════════════
 
     /// <summary>
     /// 构造 DistanceViewModel，注入标定服务与测距服务。
@@ -236,6 +236,39 @@ public partial class DistanceViewModel : ObservableObject
     /// 异步执行距离测量。
     /// 使用当前已加载的标定参数、左右图像以及用户在左图上选中的像素坐标进行测量。
     /// </summary>
+    [RelayCommand]
+    private async Task SgbmComputeAsync()
+    {
+        // ── 前置条件校验 ──
+        if (LoadedCalibration == null) { StatusText = "错误：请先加载标定参数文件"; return; }
+        if (StereoRectifyParams == null) { StatusText = "错误：校正计算参数未生成, 请先加载标定参数文件"; return; }
+
+        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath)) { StatusText = "错误：请先导入左右相机图像"; return; }
+        if (!File.Exists(LeftImagePath)) { StatusText = "错误：左图像文件不存在"; return; }
+        if (!File.Exists(RightImagePath)) { StatusText = "错误：右图像文件不存在"; return; }
+
+        // ── 执行测距 ──
+        StatusText = "正在进行SGBM计算(视差图与3D点云图)...";
+
+        try
+        {
+            var leftMat = new Mat(LeftImagePath, ImreadModes.Grayscale);
+            var rightMat = new Mat(RightImagePath, ImreadModes.Grayscale);
+
+            (_disparity, _mapXyz) = _distanceService.SgbmCompute(StereoRectifyParams, leftMat, rightMat);
+
+            StatusText = $"视差图与3D点云图计算完成 !";
+        }
+        catch (System.Exception ex)
+        {
+            StatusText = $"测量失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 异步执行距离测量。
+    /// 使用当前已加载的标定参数、左右图像以及用户在左图上选中的像素坐标进行测量。
+    /// </summary>
     [RelayCommand(IncludeCancelCommand = true)]
     private async Task MeasureDistanceAsync(CancellationToken ct)
     {
@@ -247,7 +280,6 @@ public partial class DistanceViewModel : ObservableObject
         if (!File.Exists(RightImagePath)) { StatusText = "错误：右图像文件不存在"; return; }
 
         // ── 执行测距 ──
-        IsBusy = true;
         StatusText = "正在进行立体匹配与距离计算...";
 
         try
@@ -269,7 +301,7 @@ public partial class DistanceViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+
         }
     }
 
@@ -285,7 +317,6 @@ public partial class DistanceViewModel : ObservableObject
         if (!int.TryParse(ManualRightX, out int rx) || !int.TryParse(ManualRightY, out int ry))
         { StatusText = "错误：右图坐标格式无效，请输入整数值"; return; }
 
-        IsBusy = true;
         StatusText = $"正在进行三角测量... 左({lx},{ly}) 右({rx},{ry})";
 
         try
@@ -299,9 +330,13 @@ public partial class DistanceViewModel : ObservableObject
                 StatusText = $"手动测量完成！({lx},{ly})→({rx},{ry}) 距离：{DistanceResult:F2} mm";
         }
         catch (System.Exception ex)
-        { StatusText = $"测量失败：{ex.Message}"; HasDistanceResult = false; }
+        { 
+            StatusText = $"测量失败：{ex.Message}"; 
+            HasDistanceResult = false; 
+        }
         finally
-        { IsBusy = false; }
+        { 
+        }
     }
 
     /// <summary>

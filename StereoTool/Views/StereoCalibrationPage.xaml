@@ -34,12 +34,14 @@
                         Height="36"
                         Margin="5,3"
                         Command="{Binding ImportLeftImagesCommand}"
-                        Content="📂 导入左图" />
+                        Content="📂 导入左图"
+                        FontWeight="SemiBold" />
                 <Button Width="120"
                         Height="36"
                         Margin="5,3"
                         Command="{Binding ImportRightImagesCommand}"
-                        Content="📂 导入右图" />
+                        Content="📂 导入右图"
+                        FontWeight="SemiBold" />
                 <Button Width="120"
                         Height="36"
                         Margin="5,3"

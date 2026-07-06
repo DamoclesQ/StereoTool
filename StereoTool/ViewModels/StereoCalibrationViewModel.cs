@@ -158,9 +158,6 @@ public partial class StereoCalibrationViewModel : ObservableObject
         StatusText = $"右图已导入 {RightPendingPaths.Count} 张，待检测";
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 角点检测（独立按钮）
-    // ═══════════════════════════════════════════════
 
     /// <summary>对左右待配对图片执行角点检测，结果加入 ValidPairs</summary>
     [RelayCommand]

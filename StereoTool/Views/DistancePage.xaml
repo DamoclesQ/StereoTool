@@ -1043,84 +1043,167 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!--  图像  -->
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="4" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <TabControl>
+                    <TabItem Header="原图">
+                        <!--  图像  -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="4" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                    <!--  左图  -->
-                    <GroupBox Grid.Column="0" Header="左相机图像（Ctrl+滚轮缩放，点击选点）">
-                        <Border Background="#FAFAFA"
-                                BorderBrush="#E0E0E0"
-                                BorderThickness="1">
-                            <xctk:Zoombox IsUsingScrollBars="True"
-                                          KeepContentInBounds="False"
-                                          RelativeZoomModifiers="ctrl">
-                                <i:Interaction.Triggers>
-                                    <i:EventTrigger EventName="Loaded">
-                                        <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
-                                    </i:EventTrigger>
-                                </i:Interaction.Triggers>
-                                <Grid>
-                                    <Image Source="{Binding LeftImage}" Stretch="Uniform" />
-                                    <Canvas x:Name="LeftImageCanvas"
-                                            Background="Transparent"
-                                            MouseDown="LeftImage_MouseDown">
-                                        <Ellipse Canvas.Left="{Binding MarkerX}"
-                                                 Canvas.Top="{Binding MarkerY}"
-                                                 Width="14"
-                                                 Height="14"
-                                                 Fill="Transparent"
-                                                 Stroke="#ff4444"
-                                                 StrokeThickness="2"
-                                                 Visibility="{Binding MarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
-                                    </Canvas>
-                                </Grid>
-                            </xctk:Zoombox>
-                        </Border>
-                    </GroupBox>
+                            <!--  左图  -->
+                            <GroupBox Header="左相机图像（Ctrl+滚轮缩放，点击选点）">
+                                <Border Background="#FAFAFA"
+                                        BorderBrush="#E0E0E0"
+                                        BorderThickness="1">
+                                    <xctk:Zoombox IsUsingScrollBars="True"
+                                                  KeepContentInBounds="False"
+                                                  RelativeZoomModifiers="ctrl">
+                                        <i:Interaction.Triggers>
+                                            <i:EventTrigger EventName="Loaded">
+                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                            </i:EventTrigger>
+                                        </i:Interaction.Triggers>
+                                        <Grid>
+                                            <Image Source="{Binding LeftImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="LeftImageCanvas"
+                                                    Background="Transparent"
+                                                    MouseDown="LeftImage_MouseDown">
+                                                <Ellipse Canvas.Left="{Binding MarkerX}"
+                                                         Canvas.Top="{Binding MarkerY}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         Fill="Transparent"
+                                                         Stroke="#ff4444"
+                                                         StrokeThickness="2"
+                                                         Visibility="{Binding MarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                            </Canvas>
+                                        </Grid>
+                                    </xctk:Zoombox>
+                                </Border>
+                            </GroupBox>
 
-                    <GridSplitter Grid.Column="1"
-                                  Width="4"
-                                  HorizontalAlignment="Stretch"
-                                  Background="#E0E0E0" />
+                            <GridSplitter Grid.Column="1"
+                                          Width="4"
+                                          HorizontalAlignment="Stretch"
+                                          Background="#E0E0E0" />
 
-                    <!--  右图  -->
-                    <GroupBox Grid.Column="2" Header="右相机图像（Ctrl+滚轮缩放，点击选点）">
-                        <Border Background="#FAFAFA"
-                                BorderBrush="#E0E0E0"
-                                BorderThickness="1">
-                            <xctk:Zoombox IsUsingScrollBars="True"
-                                          KeepContentInBounds="False"
-                                          RelativeZoomModifiers="ctrl">
-                                <i:Interaction.Triggers>
-                                    <i:EventTrigger EventName="Loaded">
-                                        <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
-                                    </i:EventTrigger>
-                                </i:Interaction.Triggers>
-                                <Grid>
-                                    <Image Source="{Binding RightImage}" Stretch="Uniform" />
-                                    <Canvas x:Name="RightImageCanvas"
-                                            Background="Transparent"
-                                            MouseDown="RightImage_MouseDown">
-                                        <Ellipse Canvas.Left="{Binding RightMarkerX}"
-                                                 Canvas.Top="{Binding RightMarkerY}"
-                                                 Width="14"
-                                                 Height="14"
-                                                 Fill="Transparent"
-                                                 Stroke="#ff4444"
-                                                 StrokeThickness="2"
-                                                 Visibility="{Binding RightMarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
-                                    </Canvas>
-                                </Grid>
-                            </xctk:Zoombox>
-                        </Border>
-                    </GroupBox>
-                </Grid>
+                            <!--  右图  -->
+                            <GroupBox Grid.Column="2" Header="右相机图像（Ctrl+滚轮缩放，点击选点）">
+                                <Border Background="#FAFAFA"
+                                        BorderBrush="#E0E0E0"
+                                        BorderThickness="1">
+                                    <xctk:Zoombox IsUsingScrollBars="True"
+                                                  KeepContentInBounds="False"
+                                                  RelativeZoomModifiers="ctrl">
+                                        <i:Interaction.Triggers>
+                                            <i:EventTrigger EventName="Loaded">
+                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                            </i:EventTrigger>
+                                        </i:Interaction.Triggers>
+                                        <Grid>
+                                            <Image Source="{Binding RightImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="RightImageCanvas"
+                                                    Background="Transparent"
+                                                    MouseDown="RightImage_MouseDown">
+                                                <Ellipse Canvas.Left="{Binding RightMarkerX}"
+                                                         Canvas.Top="{Binding RightMarkerY}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         Fill="Transparent"
+                                                         Stroke="#ff4444"
+                                                         StrokeThickness="2"
+                                                         Visibility="{Binding RightMarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                            </Canvas>
+                                        </Grid>
+                                    </xctk:Zoombox>
+                                </Border>
+                            </GroupBox>
+                        </Grid>
+                    </TabItem>
 
+                    <TabItem Header="视差图" Visibility="Collapsed">
+                        <!--  图像  -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="4" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!--  左图  -->
+                            <GroupBox Header="左相机图像（Ctrl+滚轮缩放，点击选点）">
+                                <Border Background="#FAFAFA"
+                                        BorderBrush="#E0E0E0"
+                                        BorderThickness="1">
+                                    <xctk:Zoombox IsUsingScrollBars="True"
+                                                  KeepContentInBounds="False"
+                                                  RelativeZoomModifiers="ctrl">
+                                        <i:Interaction.Triggers>
+                                            <i:EventTrigger EventName="Loaded">
+                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                            </i:EventTrigger>
+                                        </i:Interaction.Triggers>
+                                        <Grid>
+                                            <Image Source="{Binding LeftImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="LeftImageCanvas2"
+                                                    Background="Transparent"
+                                                    MouseDown="LeftImage_MouseDown">
+                                                <Ellipse Canvas.Left="{Binding MarkerX}"
+                                                         Canvas.Top="{Binding MarkerY}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         Fill="Transparent"
+                                                         Stroke="#ff4444"
+                                                         StrokeThickness="2"
+                                                         Visibility="{Binding MarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                            </Canvas>
+                                        </Grid>
+                                    </xctk:Zoombox>
+                                </Border>
+                            </GroupBox>
+
+                            <GridSplitter Grid.Column="1"
+                                          Width="4"
+                                          HorizontalAlignment="Stretch"
+                                          Background="#E0E0E0" />
+
+                            <!--  右图  -->
+                            <GroupBox Grid.Column="2" Header="视差图像（Ctrl+滚轮缩放，点击选点）">
+                                <Border Background="#FAFAFA"
+                                        BorderBrush="#E0E0E0"
+                                        BorderThickness="1">
+                                    <xctk:Zoombox IsUsingScrollBars="True"
+                                                  KeepContentInBounds="False"
+                                                  RelativeZoomModifiers="ctrl">
+                                        <i:Interaction.Triggers>
+                                            <i:EventTrigger EventName="Loaded">
+                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                            </i:EventTrigger>
+                                        </i:Interaction.Triggers>
+                                        <Grid>
+                                            <Image Source="{Binding RightImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="DisparityImageCanvas"
+                                                    Background="Transparent"
+                                                    MouseDown="RightImage_MouseDown">
+                                                <Ellipse Canvas.Left="{Binding RightMarkerX}"
+                                                         Canvas.Top="{Binding RightMarkerY}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         Fill="Transparent"
+                                                         Stroke="#ff4444"
+                                                         StrokeThickness="2"
+                                                         Visibility="{Binding RightMarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                            </Canvas>
+                                        </Grid>
+                                    </xctk:Zoombox>
+                                </Border>
+                            </GroupBox>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
                 <!--  选中点坐标显示  -->
                 <Border Grid.Row="1"
                         Margin="0,4,0,0"
@@ -1179,8 +1262,8 @@
                                 Margin="2"
                                 Background="#e74c3c"
                                 BorderThickness="0"
-                                Command="{Binding MeasureDistanceCommand}"
-                                Content="📏 SGBM 测距"
+                                Command="{Binding SgbmComputeCommand}"
+                                Content="📏 SGBM匹配"
                                 Cursor="Hand"
                                 FontSize="12"
                                 FontWeight="SemiBold"
@@ -1236,8 +1319,7 @@
                             Background="#FFF8E1"
                             BorderBrush="#FFC107"
                             BorderThickness="1"
-                            CornerRadius="4"
-                            Visibility="{Binding HasDistanceResult, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
+                            CornerRadius="4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Margin="0,0,8,0"
                                        VerticalAlignment="Center"
@@ -1262,13 +1344,6 @@
                     BorderThickness="1"
                     CornerRadius="4">
                 <StackPanel Orientation="Horizontal">
-                    <ProgressBar Width="120"
-                                 Height="6"
-                                 Margin="0,0,10,0"
-                                 Background="#E0E0E0"
-                                 Foreground="#1976D2"
-                                 IsIndeterminate="{Binding IsBusy}"
-                                 Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
                     <TextBlock VerticalAlignment="Center"
                                FontSize="12"
                                Foreground="#495057"

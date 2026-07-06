@@ -41,16 +41,22 @@ public class CalibrationService
         var rightPoints = detectedImagePairs.Select(p => p.RightCorners.ToList()).ToList();
         var imageSize = detectedImagePairs.First().ImageSize;
 
-
         var leftCameraMatrix = new double[3, 3];
         var leftDistCoeffs = new double[5];
         var rightCameraMatrix = new double[3, 3];
         var rightDistCoeffs = new double[5];
+
+        // 左右相机分别进行单目标定，得到内参矩阵和畸变系数
+        var rms1 = Cv2.CalibrateCamera(objectPoints, leftPoints, imageSize, leftCameraMatrix, leftDistCoeffs, out _, out _);
+        var rms2 = Cv2.CalibrateCamera(objectPoints, rightPoints, imageSize, rightCameraMatrix, rightDistCoeffs, out _, out _);
+
         var R = new Mat();
         var T = new Mat();
         var E = new Mat();
         var F = new Mat();
-        var rms = Cv2.StereoCalibrate(objectPoints, 
+
+        // 双目立体标定，FixIntrinsic 模式：内参矩阵和畸变系数固定不变，仅求解 R、T、E、F
+        var rms = Cv2.StereoCalibrate(objectPoints,
             leftPoints, rightPoints, 
             leftCameraMatrix, leftDistCoeffs, 
             rightCameraMatrix, rightDistCoeffs, 
