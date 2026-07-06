@@ -325,9 +325,9 @@ public partial class DistanceViewModel : ObservableObject
         var fx = LoadedCalibration.LeftCameraMatrix[0, 0];
         var baseline = LoadedCalibration.TranslationVector[0];
         var d = (SelectedPoint.X - RightSelectedPoint.X) * 1.0;
-        var distance = fx * baseline / d;
+        var distance = fx * Math.Abs(baseline) / d;
 
-        StatusText = $"fb/d = {distance}";
+        StatusText = $"不考虑畸变，不做极线校正：f*b/d = {distance}";
     }
 
     /// <summary>
@@ -337,21 +337,39 @@ public partial class DistanceViewModel : ObservableObject
     /// <param name="pixelX">图像像素 X 坐标</param>
     /// <param name="pixelY">图像像素 Y 坐标</param>
     /// <returns>距离值（mm），坐标越界或数据无效时返回 NaN</returns>
-    public double GetDistanceFromXYZ(int pixelX, int pixelY)
+    public (double X, double Y, double Z) GetXYZ(int pixelX, int pixelY)
     {
         if (MapXyz == null || MapXyz.Empty())
-            return double.NaN;
+            return (double.NaN, double.NaN, double.NaN);
 
         if (pixelX < 0 || pixelX >= MapXyz.Cols || pixelY < 0 || pixelY >= MapXyz.Rows)
-            return double.NaN;
+            return (double.NaN, double.NaN, double.NaN);
 
         // CV_32FC3 的每个像素包含 (X, Y, Z) 三个 float 分量
         var vec = MapXyz.At<Vec3f>(pixelY, pixelX);
-        float z = vec.Item2; // Z 分量即为深度/距离（mm）
 
-        if (z <= 0 || float.IsNaN(z) || float.IsInfinity(z))
+        return (vec.Item0, vec.Item1, vec.Item2);
+    }
+
+    /// <summary>
+    /// 获取指定点视差
+    /// </summary>
+    /// <param name="pixelX"></param>
+    /// <param name="pixelY"></param>
+    /// <returns></returns>
+    public double GetDisparity(int pixelX, int pixelY)
+    {
+        if (Disparity == null || Disparity.Empty())
             return double.NaN;
 
-        return z;
+        if (pixelX < 0 || pixelX >= Disparity.Cols || pixelY < 0 || pixelY >= Disparity.Rows)
+            return double.NaN;
+
+        var d = Disparity.At<float>(pixelY, pixelX);
+
+        if (d <= 0 || float.IsNaN(d) || float.IsInfinity(d))
+            return double.NaN;
+
+        return d;
     }
 }

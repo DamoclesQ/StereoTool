@@ -101,7 +101,7 @@ public class DistanceService : IDisposable
         disparity.ConvertTo(disparity32F, MatType.CV_32F, 1.0 / 16.0);
 
         var xyz = new Mat();
-        Cv2.ReprojectImageTo3D(disparity, xyz, stereoRectifyParams.Q);
+        Cv2.ReprojectImageTo3D(disparity32F, xyz, stereoRectifyParams.Q);
 
         return (disparity32F, xyz);
     }

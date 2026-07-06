@@ -1,7 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using StereoTool.ViewModels;
 
 namespace StereoTool.Views;
@@ -94,13 +94,21 @@ public partial class DistancePage : Page
                 out double scale, out double offsetX, out double offsetY))
             return;
 
+        // 更新 ViewModel 中的选点坐标
         vm.SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
 
         // 同步设置标记点在 Canvas 中的坐标（将图像像素坐标反算回 Canvas 坐标）
         vm.MarkerX = pixelX * scale + offsetX - 7;  // -7 使圆点居中（Ellipse 宽高 14 的一半）
         vm.MarkerY = pixelY * scale + offsetY - 7;
         vm.MarkerVisible = true;
-        vm.StatusText = $"测量点已选择：({pixelX}, {pixelY}) — 就绪，可执行测距";
+
+        var (x,y,z) = vm.GetXYZ(pixelX, pixelY);
+
+        if (z <= 0 || double.IsNaN(z) || double.IsInfinity(z))
+            z = double.NaN;
+        vm.DistanceResult = z;
+
+        vm.StatusText = $"测量点已选择({pixelX}, {pixelY}): (x, y, z)=({x:F3}, {y:F3}, {z:F3})";
     }
 
     /// <summary>
@@ -130,25 +138,17 @@ public partial class DistancePage : Page
         vm.StatusText = $"右图测量点已选择：({pixelX}, {pixelY}) — 左右点就绪后可执行手动测距";
     }
 
-    /// <summary>
-    /// 视差图 Tab 中左图 Canvas 的鼠标点击事件处理。
-    /// 提取像素坐标后从 XYZ 缓存直接读取距离值，并同步在视差图上显示标记点。
-    /// </summary>
-    private void DisparityTab_LeftImage_MouseDown(object sender, MouseButtonEventArgs e)
+    private void DisparityImage_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not DistanceViewModel vm)
             return;
 
-        // 使用 sender 获取触发事件的 Canvas，支持原图 Tab 和视差图 Tab 共用
-        if (sender is not System.Windows.Controls.Canvas canvas)
+        Point clickPos = e.GetPosition(DisparityImageCanvas);
+
+        if (vm.DisparityImage is not BitmapSource disparityImg)
             return;
 
-        Point clickPos = e.GetPosition(canvas);
-
-        if (vm.LeftImage is not BitmapSource leftBmp)
-            return;
-
-        if (!TryGetImagePixelCoords(canvas, leftBmp, clickPos,
+        if (!TryGetImagePixelCoords(DisparityImageCanvas, disparityImg, clickPos,
                 out int pixelX, out int pixelY,
                 out double scale, out double offsetX, out double offsetY))
             return;
@@ -156,23 +156,44 @@ public partial class DistancePage : Page
         // 更新 ViewModel 中的选点坐标
         vm.SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
 
-        // 计算 Canvas 中的标记位置（Ellipse 宽高 14，减 7 使圆心对齐点击点）
-        vm.MarkerX = pixelX * scale + offsetX - 7;
+        // 同步设置标记点在 Canvas 中的坐标（将图像像素坐标反算回 Canvas 坐标）
+        vm.MarkerX = pixelX * scale + offsetX - 7;  // -7 使圆点居中（Ellipse 宽高 14 的一半）
         vm.MarkerY = pixelY * scale + offsetY - 7;
         vm.MarkerVisible = true;
 
         // 从 XYZ 缓存直接读取距离值
-        double distance = vm.GetDistanceFromXYZ(pixelX, pixelY);
+        double d = vm.GetDisparity(pixelX, pixelY);
+        
+        vm.StatusText = $"测量点已选择：({pixelX}, {pixelY}), 视差：{d}";
+    }
 
-        if (!double.IsNaN(distance))
-        {
-            vm.DistanceResult = distance;
-            vm.StatusText = $"像素 ({pixelX}, {pixelY}) 的距离：{distance:F2} mm（从XYZ缓存提取）";
-        }
-        else
-        {
-            vm.DistanceResult = 0.0;
-            vm.StatusText = $"像素 ({pixelX}, {pixelY}) 处无法计算距离（视差无效或越界）";
-        }
+    private void ZImage_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not DistanceViewModel vm)
+            return;
+
+        Point clickPos = e.GetPosition(ZImageCanvas);
+
+        if (vm.ZImage is not BitmapSource zBmp)
+            return;
+
+        if (!TryGetImagePixelCoords(ZImageCanvas, zBmp, clickPos,
+                out int pixelX, out int pixelY,
+                out double scale, out double offsetX, out double offsetY))
+            return;
+
+        vm.RightSelectedPoint = new System.Drawing.Point(pixelX, pixelY);
+
+        vm.RightMarkerX = pixelX * scale + offsetX - 7;
+        vm.RightMarkerY = pixelY * scale + offsetY - 7;
+        vm.RightMarkerVisible = true;
+
+        var (x, y, z) = vm.GetXYZ(pixelX, pixelY);
+
+        if (z <= 0 || double.IsNaN(z) || double.IsInfinity(z))
+            z = double.NaN;
+        vm.DistanceResult = z;
+
+        vm.StatusText = $"3D点云图已选择点({pixelX}, {pixelY}): (x, y, z)=({x:F3}, {y:F3}, {z:F3})";
     }
 }

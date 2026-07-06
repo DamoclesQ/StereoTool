@@ -1121,7 +1121,7 @@
                             </GroupBox>
                         </Grid>
                     </TabItem>
-                    <TabItem Header="视差测距">
+                    <TabItem Header="视差">
                         <!--  图像  -->
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
@@ -1131,7 +1131,7 @@
                             </Grid.ColumnDefinitions>
 
                             <!--  左图  -->
-                            <GroupBox Header="左相机图像（Ctrl+滚轮缩放，点击选点）">
+                            <GroupBox Header="归一化视差图（Ctrl+滚轮缩放，点击选点）">
                                 <Border Background="#FAFAFA"
                                         BorderBrush="#E0E0E0"
                                         BorderThickness="1">
@@ -1144,10 +1144,10 @@
                                             </i:EventTrigger>
                                         </i:Interaction.Triggers>
                                         <Grid>
-                                            <Image Source="{Binding LeftImage}" Stretch="Uniform" />
-                                            <Canvas x:Name="DisparityTabLeftCanvas"
+                                            <Image Source="{Binding DisparityImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="DisparityImageCanvas"
                                                     Background="Transparent"
-                                                    MouseDown="DisparityTab_LeftImage_MouseDown">
+                                                    MouseDown="DisparityImage_MouseDown">
                                                 <Ellipse Canvas.Left="{Binding MarkerX}"
                                                          Canvas.Top="{Binding MarkerY}"
                                                          Width="14"
@@ -1167,46 +1167,36 @@
                                           HorizontalAlignment="Stretch"
                                           Background="#E0E0E0" />
 
-                            <!--  右图  -->
-                            <TabControl Grid.Column="2">
-                                <TabItem Header="归一化视差图">
-                                    <Border Background="#FAFAFA"
-                                            BorderBrush="#E0E0E0"
-                                            BorderThickness="1">
-                                        <xctk:Zoombox IsUsingScrollBars="True"
-                                                      KeepContentInBounds="False"
-                                                      RelativeZoomModifiers="ctrl">
-                                            <i:Interaction.Triggers>
-                                                <i:EventTrigger EventName="Loaded">
-                                                    <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
-                                                </i:EventTrigger>
-                                            </i:Interaction.Triggers>
-                                            <Grid>
-                                                <Image Source="{Binding DisparityImage}" Stretch="Uniform" />
-                                            </Grid>
-                                        </xctk:Zoombox>
-                                    </Border>
-                                </TabItem>
-                                <TabItem Header="深度伪彩图">
-                                    <Border Background="#FAFAFA"
-                                            BorderBrush="#E0E0E0"
-                                            BorderThickness="1">
-                                        <xctk:Zoombox IsUsingScrollBars="True"
-                                                      KeepContentInBounds="False"
-                                                      RelativeZoomModifiers="ctrl">
-                                            <i:Interaction.Triggers>
-                                                <i:EventTrigger EventName="Loaded">
-                                                    <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
-                                                </i:EventTrigger>
-                                            </i:Interaction.Triggers>
-                                            <Grid>
-                                                <Image Source="{Binding ZImage}" Stretch="Uniform" />
-                                            </Grid>
-                                        </xctk:Zoombox>
-                                    </Border>
-                                </TabItem>
-                            </TabControl>
-
+                            <GroupBox Grid.Column="2" Header="深度伪彩图（Ctrl+滚轮缩放，点击选点）">
+                                <Border Background="#FAFAFA"
+                                        BorderBrush="#E0E0E0"
+                                        BorderThickness="1">
+                                    <xctk:Zoombox IsUsingScrollBars="True"
+                                                  KeepContentInBounds="False"
+                                                  RelativeZoomModifiers="ctrl">
+                                        <i:Interaction.Triggers>
+                                            <i:EventTrigger EventName="Loaded">
+                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                            </i:EventTrigger>
+                                        </i:Interaction.Triggers>
+                                        <Grid>
+                                            <Image Source="{Binding ZImage}" Stretch="Uniform" />
+                                            <Canvas x:Name="ZImageCanvas"
+                                                    Background="Transparent"
+                                                    MouseDown="ZImage_MouseDown">
+                                                <Ellipse Canvas.Left="{Binding RightMarkerX}"
+                                                         Canvas.Top="{Binding RightMarkerY}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         Fill="Transparent"
+                                                         Stroke="#ff4444"
+                                                         StrokeThickness="2"
+                                                         Visibility="{Binding RightMarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+                                            </Canvas>
+                                        </Grid>
+                                    </xctk:Zoombox>
+                                </Border>
+                            </GroupBox>
                         </Grid>
                     </TabItem>
                 </TabControl>
@@ -1292,7 +1282,8 @@
                                 Margin="2"
                                 Command="{Binding ManuComputeCommand}"
                                 Content="手动计算(f*b/d)"
-                                FontSize="12" />
+                                FontSize="12"
+                                ToolTip="不考虑畸变" />
                     </WrapPanel>
 
                     <!--  距离结果  -->
@@ -1311,7 +1302,7 @@
                                        FontSize="16"
                                        FontWeight="Bold"
                                        Foreground="#c0392b"
-                                       Text="{Binding DistanceResult, StringFormat='{}{0:F4}'}" />
+                                       Text="{Binding DistanceResult, StringFormat='{}{0:F4} mm'}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
