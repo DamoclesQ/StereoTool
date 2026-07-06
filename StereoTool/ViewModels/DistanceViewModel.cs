@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenCvSharp;
+using OpenCvSharp.WpfExtensions;
 
 namespace StereoTool.ViewModels;
 
@@ -18,40 +19,42 @@ public partial class DistanceViewModel : ObservableObject
     private readonly CalibrationService _calibrationService;
     private readonly DistanceService _distanceService;
 
-    private Mat? _disparity;
-    private Mat? _mapXyz;
-
     /// <summary>标定结果文件路径（用户从磁盘加载的 JSON 文件）</summary>
     [ObservableProperty] private string _calibrationFilePath = string.Empty;
-
-    /// <summary>左相机图像文件路径</summary>
-    [ObservableProperty] private string _leftImagePath = string.Empty;
-
-    /// <summary>右相机图像文件路径</summary>
-    [ObservableProperty] private string _rightImagePath = string.Empty;
 
     /// <summary>已加载的标定结果对象</summary>
     [ObservableProperty] private StereoCalibrationParams? _loadedCalibration;
 
-    public StereoRectifyResult? StereoRectifyParams;
+    /// <summary>加载的左右图原图</summary>
+    [ObservableProperty] private Mat? _leftMat;
+    [ObservableProperty] private Mat? _rightMat;
 
-    /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
-    [ObservableProperty] private System.Drawing.Point _selectedPoint;
+    /// <summary>用于显示的左右图原图 </summary>
+    [ObservableProperty] private WriteableBitmap? _leftImage;
+    [ObservableProperty] private WriteableBitmap? _rightImage;
 
-    /// <summary>测距结果（单位：）</summary>
-    [ObservableProperty] private double _distanceResult;
+    /// <summary>SGBM 计算的视差图</summary>
+    [ObservableProperty] private Mat? _disparity;
+    /// <summary>SGBM 计算的点云图</summary>
+    [ObservableProperty] private Mat? _mapXyz;
 
-    /// <summary>是否已有有效的测距结果（用于 UI 显示/隐藏结果行）</summary>
-    [ObservableProperty] private bool _hasDistanceResult;
+    /// <summary>归一化后的视差图</summary>
+    [ObservableProperty] private WriteableBitmap? _disparityImage;
+    /// <summary>深度图伪彩图</summary>
+    [ObservableProperty] private WriteableBitmap? _zImage;
+
+    [ObservableProperty] private StereoRectifyResult? _stereoRectifyParams;
 
     /// <summary>状态栏文本</summary>
     [ObservableProperty] private string _statusText = "就绪 — 请加载标定文件并导入双目图像";
 
-    /// <summary>左相机图像源（WPF 绑定用 BitmapSource）</summary>
-    [ObservableProperty] private BitmapSource? _leftImage;
+    [ObservableProperty] double _distanceResult = 0;
 
-    /// <summary>右相机图像源（WPF 绑定用 BitmapSource）</summary>
-    [ObservableProperty] private BitmapSource? _rightImage;
+
+    #region 标记点
+
+    /// <summary>用户在左图像上点击的像素坐标（用于距离测量）</summary>
+    [ObservableProperty] private System.Drawing.Point _selectedPoint;
 
     /// <summary>标记点在 Canvas 中的 X 坐标（像素），用于十字准星定位</summary>
     [ObservableProperty] private double _markerX;
@@ -62,18 +65,6 @@ public partial class DistanceViewModel : ObservableObject
     /// <summary>标记点是否可见（用户已点击选择测量点后为 true）</summary>
     [ObservableProperty] private bool _markerVisible;
 
-    /// <summary>手动输入：左图 X 坐标（像素）</summary>
-    [ObservableProperty] private string _manualLeftX = "";
-
-    /// <summary>手动输入：左图 Y 坐标（像素）</summary>
-    [ObservableProperty] private string _manualLeftY = "";
-
-    /// <summary>手动输入：右图 X 坐标（像素）</summary>
-    [ObservableProperty] private string _manualRightX = "";
-
-    /// <summary>手动输入：右图 Y 坐标（像素）</summary>
-    [ObservableProperty] private string _manualRightY = "";
-
     /// <summary>用户在右图像上点击的像素坐标</summary>
     [ObservableProperty] private System.Drawing.Point _rightSelectedPoint;
 
@@ -83,8 +74,11 @@ public partial class DistanceViewModel : ObservableObject
     /// <summary>右图标记点在 Canvas 中的 Y 坐标</summary>
     [ObservableProperty] private double _rightMarkerY;
 
-    /// <summary>右图标记点是否可见</summary>
+    /// <summary>右图标记点是否可见</summary> 
     [ObservableProperty] private bool _rightMarkerVisible;
+
+	#endregion
+
 
 
     public string LeftFocalMm => LoadedCalibration != null && LoadedCalibration.PixelSizeUm > 0
@@ -96,23 +90,55 @@ public partial class DistanceViewModel : ObservableObject
     //  派生属性 — 标定参数展示
     // ═══════════════════════════════════════════════
 
-    public bool HasCalibration => LoadedCalibration != null;
-
-    // ── 内参/畸变/外参的派生属性已由 StereoParameters 内置提供，通过 LoadedCalibration 访问 ──
-
     /// <summary>重投影误差显示</summary>
     public string ReprojectionErrorDisplay => LoadedCalibration != null ? $"{LoadedCalibration.ReprojectionError:F4} 像素" : "--";
 
     /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
     partial void OnLoadedCalibrationChanged(StereoCalibrationParams? value)
     {
-        OnPropertyChanged(nameof(HasCalibration));
         OnPropertyChanged(nameof(LeftFocalMm));
         OnPropertyChanged(nameof(RightFocalMm));
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
 
-        if(LoadedCalibration != null) 
+        if(LoadedCalibration != null)
             StereoRectifyParams = _distanceService.GetRectifyParams(LoadedCalibration);
+    }
+
+    partial void OnLeftMatChanged(Mat? value)
+    {
+        LeftImage = LeftMat?.ToWriteableBitmap();
+    }
+
+    partial void OnRightMatChanged(Mat? value)
+    {
+        RightImage = RightMat?.ToWriteableBitmap();
+    }
+
+    partial void OnDisparityChanged(Mat? value)
+    {
+        if (value == null)
+        {
+            DisparityImage = null;
+            return;
+        }
+        else
+        {
+            DisparityImage = _distanceService.Normlize(value).ToWriteableBitmap();
+        }      
+    }
+
+    partial void OnMapXyzChanged(Mat? value)
+    {
+        if (value == null)
+        {
+            ZImage = null;
+            return;
+        }
+        else
+        {
+            var zMat = _distanceService.Split(value).Z;
+            ZImage = _distanceService.GetPseudoColorMat(zMat).ToWriteableBitmap();
+        }
     }
 
 
@@ -127,12 +153,9 @@ public partial class DistanceViewModel : ObservableObject
         _distanceService = distanceService;
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令
-    // ═══════════════════════════════════════════════
 
     /// <summary>
-    /// 从磁盘加载标定结果 JSON 文件。
+    /// 从磁盘加载标定结果 YAML 文件。
     /// </summary>
     [RelayCommand]
     private void LoadCalibration()
@@ -175,25 +198,8 @@ public partial class DistanceViewModel : ObservableObject
         if (dialog.ShowDialog() != true)
             return;
 
-        LeftImagePath = dialog.FileName;
-        // 同步加载为 BitmapSource 供 UI 显示
-        try
-        {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(dialog.FileName);
-            bitmap.EndInit();
-            bitmap.Freeze();
-            LeftImage = bitmap;
-        }
-        catch
-        {
-            LeftImage = null;
-        }
+        LeftMat = new Mat(dialog.FileName, ImreadModes.Unchanged);
         StatusText = $"左图像已导入：{Path.GetFileName(dialog.FileName)}";
-        // 切换图像时清除旧结果
-        HasDistanceResult = false;
     }
 
     /// <summary>
@@ -212,52 +218,39 @@ public partial class DistanceViewModel : ObservableObject
         if (dialog.ShowDialog() != true)
             return;
 
-        RightImagePath = dialog.FileName;
-        try
-        {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(dialog.FileName);
-            bitmap.EndInit();
-            bitmap.Freeze();
-            RightImage = bitmap;
-        }
-        catch
-        {
-            RightImage = null;
-        }
+        RightMat = new Mat(dialog.FileName, ImreadModes.Unchanged);
         StatusText = $"右图像已导入：{Path.GetFileName(dialog.FileName)}";
-        // 切换图像时清除旧结果
-        HasDistanceResult = false;
     }
 
     /// <summary>
-    /// 异步执行距离测量。
-    /// 使用当前已加载的标定参数、左右图像以及用户在左图上选中的像素坐标进行测量。
+    /// 执行 SGBM 立体匹配，计算视差图和 3D 点云图
     /// </summary>
     [RelayCommand]
     private async Task SgbmComputeAsync()
     {
-        // ── 前置条件校验 ──
         if (LoadedCalibration == null) { StatusText = "错误：请先加载标定参数文件"; return; }
         if (StereoRectifyParams == null) { StatusText = "错误：校正计算参数未生成, 请先加载标定参数文件"; return; }
 
-        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath)) { StatusText = "错误：请先导入左右相机图像"; return; }
-        if (!File.Exists(LeftImagePath)) { StatusText = "错误：左图像文件不存在"; return; }
-        if (!File.Exists(RightImagePath)) { StatusText = "错误：右图像文件不存在"; return; }
+        if (LeftMat == null || LeftMat.Empty()) { StatusText = "错误：左图像文件不存在"; return; }
+        if (RightMat == null || RightMat.Empty()) { StatusText = "错误：右图像文件不存在"; return; }
 
-        // ── 执行测距 ──
         StatusText = "正在进行SGBM计算(视差图与3D点云图)...";
 
         try
         {
-            var leftMat = new Mat(LeftImagePath, ImreadModes.Grayscale);
-            var rightMat = new Mat(RightImagePath, ImreadModes.Grayscale);
+            (Disparity, MapXyz) = _distanceService.SgbmCompute(StereoRectifyParams, LeftMat, RightMat);
 
-            (_disparity, _mapXyz) = _distanceService.SgbmCompute(StereoRectifyParams, leftMat, rightMat);
+            // 将视差图转换为 8 位灰度 BitmapSource 供 UI 显示
+            // 视差图是 CV_32F 格式，先归一化到 0-255 再转换为 CV_8U
+            if (Disparity != null && !Disparity.Empty())
+            {
+                using var normalized = new Mat();
+                Cv2.Normalize(Disparity, normalized, 0, 255, NormTypes.MinMax);
+                normalized.ConvertTo(normalized, MatType.CV_8U);
+                DisparityImage = normalized.ToWriteableBitmap();
+            }
 
-            StatusText = $"视差图与3D点云图计算完成 !";
+            StatusText = "视差图与3D点云图计算完成！";
         }
         catch (System.Exception ex)
         {
@@ -265,105 +258,100 @@ public partial class DistanceViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 异步执行距离测量。
-    /// 使用当前已加载的标定参数、左右图像以及用户在左图上选中的像素坐标进行测量。
-    /// </summary>
-    [RelayCommand(IncludeCancelCommand = true)]
-    private async Task MeasureDistanceAsync(CancellationToken ct)
+    [RelayCommand]
+    private void SaveDisparityImage()
     {
-        // ── 前置条件校验 ──
-        if (LoadedCalibration == null) { StatusText = "错误：请先加载标定结果文件"; return; }
-        if (string.IsNullOrEmpty(LeftImagePath) || string.IsNullOrEmpty(RightImagePath)) 
-        { StatusText = "错误：请先导入左右相机图像"; return; }
-        if (!File.Exists(LeftImagePath)) { StatusText = "错误：左图像文件不存在"; return; }
-        if (!File.Exists(RightImagePath)) { StatusText = "错误：右图像文件不存在"; return; }
-
-        // ── 执行测距 ──
-        StatusText = "正在进行立体匹配与距离计算...";
-
-        try
-        {
-            DistanceResult = await _distanceService.MeasureDistanceAsync(LeftImagePath, RightImagePath, LoadedCalibration, new Point2f(SelectedPoint.X, SelectedPoint.Y));
-
-            HasDistanceResult = true;
-            StatusText = $"测量完成！像素 ({SelectedPoint.X}, {SelectedPoint.Y}) 的距离：{DistanceResult:F2} mm";
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = "测量已被用户取消";
-            HasDistanceResult = false;
-        }
-        catch (System.Exception ex)
-        {
-            StatusText = $"测量失败：{ex.Message}";
-            HasDistanceResult = false;
-        }
-        finally
-        {
-
-        }
-    }
-
-    /// <summary>
-    /// 使用手动输入的左右对应点坐标执行距离测量（跳过 SGBM 匹配）。
-    /// </summary>
-    [RelayCommand(IncludeCancelCommand = true)]
-    private async Task MeasureManualDistanceAsync(CancellationToken ct)
-    {
-        if (LoadedCalibration == null) { StatusText = "错误：请先加载标定结果文件"; return; }
-        if (!int.TryParse(ManualLeftX, out int lx) || !int.TryParse(ManualLeftY, out int ly))
-        { StatusText = "错误：左图坐标格式无效，请输入整数值"; return; }
-        if (!int.TryParse(ManualRightX, out int rx) || !int.TryParse(ManualRightY, out int ry))
-        { StatusText = "错误：右图坐标格式无效，请输入整数值"; return; }
-
-        StatusText = $"正在进行三角测量... 左({lx},{ly}) 右({rx},{ry})";
-
-        try
-        {
-            DistanceResult = await _distanceService.MeasureDistanceFromPointsAsync(LoadedCalibration, new Point2f(lx, ly), new Point2f(rx, ry));
-
-            HasDistanceResult = true;
-            if (double.IsNaN(DistanceResult))
-                StatusText = "测量失败：无法计算距离（可能对应点不在有效视差范围内或越界）";
-            else
-                StatusText = $"手动测量完成！({lx},{ly})→({rx},{ry}) 距离：{DistanceResult:F2} mm";
-        }
-        catch (System.Exception ex)
-        { 
-            StatusText = $"测量失败：{ex.Message}"; 
-            HasDistanceResult = false; 
-        }
-        finally
-        { 
-        }
-    }
-
-    /// <summary>
-    /// 处理用户点击图像的逻辑。将控件坐标映射为原始图像像素坐标并保存为 SelectedPoint。
-    /// 由 View 的代码后置 (DistancePage.xaml.cs) 在 MouseDown 事件中调用。
-    /// </summary>
-    /// <param name="clickPosition">鼠标相对于 Image 控件的点击位置</param>
-    /// <param name="displayWidth">Image 控件实际渲染宽度</param>
-    /// <param name="displayHeight">Image 控件实际渲染高度</param>
-    public void OnImageClicked(System.Windows.Point clickPosition, double displayWidth, double displayHeight)
-    {
-        if (LeftImage == null)
+        if (Disparity == null || Disparity.Empty()) { 
+            StatusText = "保存失败：没有可用的视差图";
             return;
+        }
 
-        // 将控件显示坐标映射为原始图像像素坐标
-        double scaleX = LeftImage.PixelWidth / displayWidth;
-        double scaleY = LeftImage.PixelHeight / displayHeight;
+        // 让用户选择保存路径
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存视差图",
+            Filter = "TIFF 图像|*.tiff",
+            DefaultExt = ".tiff",
+            FileName = "disparity.tiff",
+            RestoreDirectory = true
+        };
 
-        int pixelX = (int)(clickPosition.X * scaleX);
-        int pixelY = (int)(clickPosition.Y * scaleY);
+        if (dialog.ShowDialog() != true)
+        {
+            StatusText = "已取消保存";
+            return;
+        }
 
-        // 确保坐标不越界
-        pixelX = Math.Clamp(pixelX, 0, (int)LeftImage.PixelWidth - 1);
-        pixelY = Math.Clamp(pixelY, 0, (int)LeftImage.PixelHeight - 1);
+        Disparity.SaveImage(dialog.FileName);
+        StatusText = $"视差图已保存:{dialog.FileName}";
+    }
 
-        SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
-        HasDistanceResult = false;
-        StatusText = $"测量点已选择：({pixelX}, {pixelY}) — 就绪，可执行测距";
+    [RelayCommand]
+    private void SaveXyzImage()
+    {
+        if (MapXyz == null || MapXyz.Empty())
+        {
+            StatusText = "保存失败：没有可用的 XYZ 点云图";
+            return;
+        }
+
+        // 让用户选择保存路径
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存 XYZ 点云图",
+            Filter = "TIFF 图像|*.tiff",
+            DefaultExt = ".tiff",
+            FileName = "xyz.tiff",
+            RestoreDirectory = true
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            StatusText = "已取消保存";
+            return;
+        }
+
+        MapXyz.SaveImage(dialog.FileName);
+        StatusText = $"XYZ 点云图已保存:{dialog.FileName}";
+    }
+
+    [RelayCommand]
+    private void ManuCompute()
+    {
+        if (LoadedCalibration == null)
+        {
+            return;
+        }
+        var fx = LoadedCalibration.LeftCameraMatrix[0, 0];
+        var baseline = LoadedCalibration.TranslationVector[0];
+        var d = (SelectedPoint.X - RightSelectedPoint.X) * 1.0;
+        var distance = fx * baseline / d;
+
+        StatusText = $"fb/d = {distance}";
+    }
+
+    /// <summary>
+    /// 从缓存的 XYZ 点云图（CV_32FC3）中提取指定像素坐标的空间距离。
+    /// 由视差图 Tab 的点击事件处理调用。
+    /// </summary>
+    /// <param name="pixelX">图像像素 X 坐标</param>
+    /// <param name="pixelY">图像像素 Y 坐标</param>
+    /// <returns>距离值（mm），坐标越界或数据无效时返回 NaN</returns>
+    public double GetDistanceFromXYZ(int pixelX, int pixelY)
+    {
+        if (MapXyz == null || MapXyz.Empty())
+            return double.NaN;
+
+        if (pixelX < 0 || pixelX >= MapXyz.Cols || pixelY < 0 || pixelY >= MapXyz.Rows)
+            return double.NaN;
+
+        // CV_32FC3 的每个像素包含 (X, Y, Z) 三个 float 分量
+        var vec = MapXyz.At<Vec3f>(pixelY, pixelX);
+        float z = vec.Item2; // Z 分量即为深度/距离（mm）
+
+        if (z <= 0 || float.IsNaN(z) || float.IsInfinity(z))
+            return double.NaN;
+
+        return z;
     }
 }

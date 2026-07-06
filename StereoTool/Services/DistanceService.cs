@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Runtime.Intrinsics.Arm;
 using OpenCvSharp;
 using StereoTool.Models;
 using StereoTool.Utils;
@@ -20,167 +21,48 @@ public class DistanceService : IDisposable
     /// <summary>匹配块大小（3-11 之间的奇数），越大视差图越平滑但细节丢失越多</summary>
     private const int SgbmBlockSize = 9;
 
-    // ═══════════════════════════════════════════════════════════════════
-    // 公有方法
-    // ═══════════════════════════════════════════════════════════════════
-
     /// <summary>
-    /// 异步执行距离测量。
-    /// 使用当前已加载的标定参数、左右图像以及用户在左图上选中的像素坐标进行测量。
+    /// 将单通道 32F 浮点 Mat 转为伪彩色 Mat，用于可视化深度图。
     /// </summary>
-    /// <param name="leftImagePath">左图像文件路径</param>
-    /// <param name="rightImagePath">右图像文件路径</param>
-    /// <param name="calib">标定结果</param>
-    /// <param name="pixelPoint">左图像上的像素坐标</param>
-    /// <returns>测量得到的距离（单位：米）</returns>
-    public async Task<double> MeasureDistanceAsync(
-        string leftImagePath,
-        string rightImagePath,
-        StereoCalibrationParams calib,
-        Point2f pixelPoint)
+    /// <param name="mat32F"></param>
+    /// <returns></returns>
+    public Mat GetPseudoColorMat(Mat mat32F)
     {
-        // 参数验证放在 Task.Run 外部，尽早暴露错误
-        if (!File.Exists(leftImagePath))
-            throw new ArgumentException($"左图像文件不存在: {leftImagePath}", nameof(leftImagePath));
-        if (!File.Exists(rightImagePath))
-            throw new ArgumentException($"右图像文件不存在: {rightImagePath}", nameof(rightImagePath));
+        // src32f : CV_32FC1
+        using var gray8 = new Mat();
 
-        // 耗时的图像加载、校正、视差计算放入后台线程，避免阻塞 UI
-        return await Task.Run(() =>
-        {
-            // ── 1. 加载为灰度图像 ──
-            using var leftGray = new Mat(leftImagePath, ImreadModes.Grayscale);
-            using var rightGray = new Mat(rightImagePath, ImreadModes.Grayscale);
+        var color = new Mat();
 
-            if (leftGray.Empty())
-                throw new InvalidOperationException($"左图像加载失败: {leftImagePath}");
-            if (rightGray.Empty())
-                throw new InvalidOperationException($"右图像加载失败: {rightImagePath}");
+        // 将32F归一化到0~255
+        Cv2.Normalize(mat32F, gray8, 0, 255, NormTypes.MinMax, (int)MatType.CV_8UC1);
 
-            // 像素坐标越界检查
-            if (pixelPoint.X < 0 || pixelPoint.X >= leftGray.Cols ||
-                pixelPoint.Y < 0 || pixelPoint.Y >= leftGray.Rows)
-            {
-                throw new ArgumentException(
-                    $"像素坐标 ({pixelPoint.X}, {pixelPoint.Y}) 超出图像范围 " +
-                    $"(0–{leftGray.Cols - 1}, 0–{leftGray.Rows - 1})",
-                    nameof(pixelPoint));
-            }
+        // 转为伪彩
+        Cv2.ApplyColorMap(gray8, color, ColormapTypes.Jet);
 
-            // ── 2. 立体校正（使用缓存，避免每次测距都重算） ──
-            var rect = GetRectifyParams(calib);
-            {
-                // ── 3. 应用校正映射 ──
-                using var rectLeft = new Mat();
-                using var rectRight = new Mat();
-                Cv2.Remap(leftGray, rectLeft, rect.LeftMapX, rect.LeftMapY, InterpolationFlags.Linear);
-                Cv2.Remap(rightGray, rectRight, rect.RightMapX, rect.RightMapY, InterpolationFlags.Linear);
-
-                // ── 4. SGBM 视差计算 ──
-                using var sgbm = StereoSGBM.Create(
-                    SgbmMinDisparity,
-                    SgbmNumDisparities,
-                    SgbmBlockSize,
-                    8 * 3 * SgbmBlockSize * SgbmBlockSize,
-                    32 * 3 * SgbmBlockSize * SgbmBlockSize,
-                    1,
-                    63,
-                    10,
-                    100,
-                    32, 
-                    StereoSGBMMode.SGBM);
-
-                using var disparity = new Mat();
-                sgbm.Compute(rectLeft, rectRight, disparity);
-
-                // ── 5. 将原始像素坐标映射到校正后坐标，再提取视差 ──
-                using var srcMat = new Mat(1, 1, MatType.CV_32FC2);
-                srcMat.Set(0, 0, pixelPoint);
-                using var dstMat = new Mat();
-                Cv2.UndistortPoints(srcMat, dstMat, rect.LeftCameraMatrix, rect.LeftDistCoeffs, rect.LeftR, rect.LeftP);
-                var rectPt = dstMat.At<Point2f>(0, 0);
-                int rectX = (int)Math.Round(rectPt.X);
-                int rectY = (int)Math.Round(rectPt.Y);
-
-                if (rectX < 0 || rectX >= disparity.Cols || rectY < 0 || rectY >= disparity.Rows)
-                    return double.NaN;
-
-                short rawDisp = disparity.At<short>(rectY, rectX);
-                double d = rawDisp / 16.0;
-
-                if (d <= 0)
-                    return double.NaN;
-
-                // ── 6. 通过重投影矩阵 Q 反算空间距离 ──
-                double q03 = rect.Q.At<double>(0, 3);
-                double q13 = rect.Q.At<double>(1, 3);
-                double q23 = rect.Q.At<double>(2, 3);
-                double q32 = rect.Q.At<double>(3, 2);
-                double q33 = rect.Q.At<double>(3, 3);
-
-                double u = rectPt.X;
-                double v = rectPt.Y;
-
-                double x = u + q03;
-                double y = v + q13;
-                double w = q32 * d + q33;
-
-                if (Math.Abs(w) < 1e-10)
-                    return double.NaN;
-
-                double z = q23 / w;
-                return z;
-            }
-        });
+        return color;
     }
 
     /// <summary>
-    /// 使用手动输入的左右对应点坐标执行距离测量（无需图像，直接基于标定参数计算）。
+    /// 将三通道 XYZ Mat 拆分为单通道 X、Y、Z Mat。
     /// </summary>
-    /// <param name="calib">双目标定结果，图像尺寸由其中的 ImageWidth/ImageHeight 推导</param>
-    /// <param name="leftPoint">左图像上的像素坐标</param>
-    /// <param name="rightPoint">右图像上的像素坐标</param>
-    /// <returns>空间距离（米），坐标越界或计算失败时返回 NaN</returns>
-    public async Task<double> MeasureDistanceFromPointsAsync(StereoCalibrationParams calib, Point2f leftPoint, Point2f rightPoint)
+    /// <param name="xyz"></param>
+    /// <returns></returns>
+    public (Mat X, Mat Y, Mat Z) Split(Mat xyz)
     {
-        if (leftPoint.X < 0 || leftPoint.X >= calib.ImageWidth ||
-            leftPoint.Y < 0 || leftPoint.Y >= calib.ImageHeight)
-            return double.NaN;
-        if (rightPoint.X < 0 || rightPoint.X >= calib.ImageWidth ||
-            rightPoint.Y < 0 || rightPoint.Y >= calib.ImageHeight)
-            return double.NaN;
+        var mats = Cv2.Split(xyz);
+        return (mats[0], mats[1], mats[2]);
+    }
 
-        return await Task.Run(() =>
-        {
-            // ── 立体校正（使用缓存，避免每次测距都重算） ──
-            var rect = GetRectifyParams(calib);
-            {
-                using var leftSrcMat = new Mat(1, 1, MatType.CV_32FC2);
-                using var rightSrcMat = new Mat(1, 1, MatType.CV_32FC2);
-                leftSrcMat.Set(0, 0, leftPoint);
-                rightSrcMat.Set(0, 0, rightPoint);
-                using var leftDstMat = new Mat();
-                using var rightDstMat = new Mat();
-                Cv2.UndistortPoints(leftSrcMat, leftDstMat, rect.LeftCameraMatrix, rect.LeftDistCoeffs, rect.LeftR, rect.LeftP);
-                Cv2.UndistortPoints(rightSrcMat, rightDstMat, rect.RightCameraMatrix, rect.RightDistCoeffs, rect.RightR, rect.RightP);
-                double rectLeftX = leftDstMat.At<Point2f>(0, 0).X;
-                double rectRightX = rightDstMat.At<Point2f>(0, 0).X;
-
-                double disparity = rectLeftX - rectRightX;
-                if (disparity <= 0)
-                    return double.NaN;
-
-                double q23 = rect.Q.At<double>(2, 3);
-                double q32 = rect.Q.At<double>(3, 2);
-                double q33 = rect.Q.At<double>(3, 3);
-
-                double w = q32 * disparity + q33;
-                if (Math.Abs(w) < 1e-10)
-                    return double.NaN;
-
-                return q23 / w;
-            }
-        });
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="mat32f"></param>
+    /// <returns></returns>
+    public Mat Normlize(Mat mat32f)
+    {
+        var mat8u = new Mat();
+        Cv2.Normalize(mat32f, mat8u, 0, 255, NormTypes.MinMax, (int)MatType.CV_8UC1);
+        return mat8u;
     }
 
     /// <summary>
@@ -262,8 +144,12 @@ public class DistanceService : IDisposable
             map1L, map2L, map1R, map2R);
     }
 
+    /// <summary>
+    /// 释放资源。当前 DistanceService 未持有需要手动释放的非托管资源，
+    /// 保留 IDisposable 接口以保持未来扩展性（如缓存 SGBM 对象等）。
+    /// </summary>
     public void Dispose()
     {
-
+        // 当前无资源需要释放
     }
 }

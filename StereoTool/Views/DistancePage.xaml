@@ -51,9 +51,7 @@
                                 Content="📂 加载标定文件" />
                     </WrapPanel>
                     <!--  标定参数展示（加载后可见）  -->
-                    <Expander Header="标定参数（点击展开/折叠）"
-                              IsExpanded="True"
-                              Visibility="{Binding HasCalibration, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <Expander Header="标定参数（点击展开/折叠）" IsExpanded="True">
                         <StackPanel>
                             <!--  统计信息卡片  -->
                             <Border Margin="0,5"
@@ -1123,8 +1121,7 @@
                             </GroupBox>
                         </Grid>
                     </TabItem>
-
-                    <TabItem Header="视差图" Visibility="Collapsed">
+                    <TabItem Header="视差测距">
                         <!--  图像  -->
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
@@ -1148,9 +1145,9 @@
                                         </i:Interaction.Triggers>
                                         <Grid>
                                             <Image Source="{Binding LeftImage}" Stretch="Uniform" />
-                                            <Canvas x:Name="LeftImageCanvas2"
+                                            <Canvas x:Name="DisparityTabLeftCanvas"
                                                     Background="Transparent"
-                                                    MouseDown="LeftImage_MouseDown">
+                                                    MouseDown="DisparityTab_LeftImage_MouseDown">
                                                 <Ellipse Canvas.Left="{Binding MarkerX}"
                                                          Canvas.Top="{Binding MarkerY}"
                                                          Width="14"
@@ -1171,36 +1168,45 @@
                                           Background="#E0E0E0" />
 
                             <!--  右图  -->
-                            <GroupBox Grid.Column="2" Header="视差图像（Ctrl+滚轮缩放，点击选点）">
-                                <Border Background="#FAFAFA"
-                                        BorderBrush="#E0E0E0"
-                                        BorderThickness="1">
-                                    <xctk:Zoombox IsUsingScrollBars="True"
-                                                  KeepContentInBounds="False"
-                                                  RelativeZoomModifiers="ctrl">
-                                        <i:Interaction.Triggers>
-                                            <i:EventTrigger EventName="Loaded">
-                                                <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
-                                            </i:EventTrigger>
-                                        </i:Interaction.Triggers>
-                                        <Grid>
-                                            <Image Source="{Binding RightImage}" Stretch="Uniform" />
-                                            <Canvas x:Name="DisparityImageCanvas"
-                                                    Background="Transparent"
-                                                    MouseDown="RightImage_MouseDown">
-                                                <Ellipse Canvas.Left="{Binding RightMarkerX}"
-                                                         Canvas.Top="{Binding RightMarkerY}"
-                                                         Width="14"
-                                                         Height="14"
-                                                         Fill="Transparent"
-                                                         Stroke="#ff4444"
-                                                         StrokeThickness="2"
-                                                         Visibility="{Binding RightMarkerVisible, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
-                                            </Canvas>
-                                        </Grid>
-                                    </xctk:Zoombox>
-                                </Border>
-                            </GroupBox>
+                            <TabControl Grid.Column="2">
+                                <TabItem Header="归一化视差图">
+                                    <Border Background="#FAFAFA"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <xctk:Zoombox IsUsingScrollBars="True"
+                                                      KeepContentInBounds="False"
+                                                      RelativeZoomModifiers="ctrl">
+                                            <i:Interaction.Triggers>
+                                                <i:EventTrigger EventName="Loaded">
+                                                    <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                                </i:EventTrigger>
+                                            </i:Interaction.Triggers>
+                                            <Grid>
+                                                <Image Source="{Binding DisparityImage}" Stretch="Uniform" />
+                                            </Grid>
+                                        </xctk:Zoombox>
+                                    </Border>
+                                </TabItem>
+                                <TabItem Header="深度伪彩图">
+                                    <Border Background="#FAFAFA"
+                                            BorderBrush="#E0E0E0"
+                                            BorderThickness="1">
+                                        <xctk:Zoombox IsUsingScrollBars="True"
+                                                      KeepContentInBounds="False"
+                                                      RelativeZoomModifiers="ctrl">
+                                            <i:Interaction.Triggers>
+                                                <i:EventTrigger EventName="Loaded">
+                                                    <i:CallMethodAction MethodName="FitToBounds" TargetObject="{Binding RelativeSource={RelativeSource AncestorType=xctk:Zoombox}}" />
+                                                </i:EventTrigger>
+                                            </i:Interaction.Triggers>
+                                            <Grid>
+                                                <Image Source="{Binding ZImage}" Stretch="Uniform" />
+                                            </Grid>
+                                        </xctk:Zoombox>
+                                    </Border>
+                                </TabItem>
+                            </TabControl>
+
                         </Grid>
                     </TabItem>
                 </TabControl>
@@ -1269,49 +1275,24 @@
                                 FontWeight="SemiBold"
                                 Foreground="White" />
                         <Separator Width="10" Background="Transparent" />
-                        <!--  手动坐标输入  -->
-                        <TextBlock Margin="0,0,4,0"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Text="左(X,Y):" />
-                        <TextBox Width="50"
-                                 Height="24"
-                                 Margin="1,0,6,0"
-                                 VerticalContentAlignment="Center"
-                                 Text="{Binding ManualLeftX, UpdateSourceTrigger=PropertyChanged}"
-                                 TextAlignment="Center" />
-                        <TextBox Width="50"
-                                 Height="24"
-                                 Margin="1,0,10,0"
-                                 VerticalContentAlignment="Center"
-                                 Text="{Binding ManualLeftY, UpdateSourceTrigger=PropertyChanged}"
-                                 TextAlignment="Center" />
-                        <TextBlock Margin="0,0,4,0"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Text="右(X,Y):" />
-                        <TextBox Width="50"
-                                 Height="24"
-                                 Margin="1,0,6,0"
-                                 VerticalContentAlignment="Center"
-                                 Text="{Binding ManualRightX, UpdateSourceTrigger=PropertyChanged}"
-                                 TextAlignment="Center" />
-                        <TextBox Width="50"
-                                 Height="24"
-                                 Margin="1,0,8,0"
-                                 VerticalContentAlignment="Center"
-                                 Text="{Binding ManualRightY, UpdateSourceTrigger=PropertyChanged}"
-                                 TextAlignment="Center" />
-                        <Button Width="90"
-                                Height="26"
-                                Margin="2,0,0,0"
-                                Background="#8E24AA"
-                                BorderThickness="0"
-                                Command="{Binding MeasureManualDistanceCommand}"
-                                Content="📏 手动测算"
-                                Cursor="Hand"
-                                FontSize="11"
-                                Foreground="White" />
+                        <Button Width="110"
+                                Height="30"
+                                Margin="2"
+                                Command="{Binding SaveDisparityImageCommand}"
+                                Content="保存视差图"
+                                FontSize="12" />
+                        <Button Width="110"
+                                Height="30"
+                                Margin="2"
+                                Command="{Binding SaveXyzImageCommand}"
+                                Content="保存3D点云图"
+                                FontSize="12" />
+                        <Button Width="110"
+                                Height="30"
+                                Margin="2"
+                                Command="{Binding ManuComputeCommand}"
+                                Content="手动计算(f*b/d)"
+                                FontSize="12" />
                     </WrapPanel>
 
                     <!--  距离结果  -->
