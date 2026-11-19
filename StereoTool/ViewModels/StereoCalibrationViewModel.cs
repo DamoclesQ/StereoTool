@@ -1,239 +1,306 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows.Media.Imaging;
-using StereoTool.Models;
-using StereoTool.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenCvSharp;
+using OpenCvSharp.WpfExtensions;
+using StereoTool.Models;
+using StereoTool.Services;
 
 namespace StereoTool.ViewModels;
 
-/// <summary>
-/// 双目标定页面的 ViewModel（合并配置 + 标定）。
-/// 棋盘格配置、图像导入、角点检测、标定执行、结果展示一体。
-/// </summary>
+/// <summary>双目标定工作流：名称配对、分析、内参选择、标定、误差筛选和校正检查。</summary>
 public partial class StereoCalibrationViewModel : ObservableObject
 {
     private readonly CalibrationService _calibrationService;
+    private readonly DistanceService _distanceService;
+    private readonly DistanceViewModel _distanceViewModel;
+    private readonly MainViewModel _mainViewModel;
+    private CalibrationParams? _fixedLeft;
+    private CalibrationParams? _fixedRight;
+    private StereoRectifyResult? _previewRectify;
+    private CancellationTokenSource? _analysisCancellation;
 
-    /// <summary>支持的图片扩展名</summary>
-    private static readonly string[] ImageExtensions = [".bmp", ".jpg", ".jpeg", ".png", ".tiff", ".tif"];
+    /// <summary>棋盘格与针孔畸变设置。</summary>
+    public ChessboardConfig ChessboardConfig { get; } = new();
 
-    // ═══════════════════════════════════════════════
-    //  绑定属性 — 配置
-    // ═══════════════════════════════════════════════
+    /// <summary>全部图片对，包含缺图、检测失败及被排除的记录。</summary>
+    [ObservableProperty] private ObservableCollection<DetectedImagePair> _imagePairs = [];
 
-    /// <summary>棋盘格配置参数</summary>
-    [ObservableProperty] private ChessboardConfig _chessboardConfig = new();
-
-    /// <summary>左图待配对路径列表</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LeftPendingCount))]
-    private ObservableCollection<string> _leftPendingPaths = [];
-
-    /// <summary>右图待配对路径列表</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RightPendingCount))]
-    private ObservableCollection<string> _rightPendingPaths = [];
-
-    /// <summary>已通过角点检测的有效图片对列表</summary>
-    [ObservableProperty] private ObservableCollection<DetectedImagePair> _validPairs = [];
-
-    /// <summary>列表中当前选中的图片对，用于角点预览</summary>
+    /// <summary>当前检查的图片对。</summary>
     [ObservableProperty] private DetectedImagePair? _selectedPair;
 
-    // ═══════════════════════════════════════════════
-    //  绑定属性 — 标定执行与结果
-    // ═══════════════════════════════════════════════
-
-    /// <summary>标定完成后的结果对象</summary>
+    /// <summary>当前有效结果。</summary>
     [ObservableProperty] private StereoCalibrationParams? _calibrationResult;
 
-    /// <summary>状态栏文本</summary>
-    [ObservableProperty]
-    private string _statusText = "就绪 — 设置棋盘格参数，导入左右图片，点击「检测角点」";
+    /// <summary>是否使用导入的固定左右内参。</summary>
+    [ObservableProperty] private bool _useFixedIntrinsics;
 
-    /// <summary>是否正在执行异步操作</summary>
-    [ObservableProperty]
-    private bool _isBusy;
+    /// <summary>固定内参来源。</summary>
+    [ObservableProperty] private string _intrinsicsSummary = "联合估计左右内参和双目外参";
 
-    /// <summary>角点预览 — 左图（绘制角点后的结果图）</summary>
+    /// <summary>左右检测和重投影预览。</summary>
     [ObservableProperty] private BitmapSource? _leftPreviewImage;
-
-    /// <summary>角点预览 — 右图（绘制角点后的结果图）</summary>
     [ObservableProperty] private BitmapSource? _rightPreviewImage;
 
-    // ═══════════════════════════════════════════════
-    //  派生属性 — 统计
-    // ═══════════════════════════════════════════════
+    /// <summary>左右校正预览，附带同高度水平线。</summary>
+    [ObservableProperty] private BitmapSource? _rectifiedLeftImage;
+    [ObservableProperty] private BitmapSource? _rectifiedRightImage;
 
-    /// <summary>左图待配对数量</summary>
-    public int LeftPendingCount => LeftPendingPaths.Count;
+    /// <summary>是否正在分析或标定。</summary>
+    [ObservableProperty] private bool _isBusy;
 
-    /// <summary>右图待配对数量</summary>
-    public int RightPendingCount => RightPendingPaths.Count;
+    /// <summary>分析进度。</summary>
+    [ObservableProperty] private double _progress;
 
-    // ═══════════════════════════════════════════════
-    //  派生属性 — 焦距/主点显示
-    // ═══════════════════════════════════════════════
+    /// <summary>操作状态。</summary>
+    [ObservableProperty] private string _statusText = "设置棋盘格，添加左右文件夹后自动配对分析；建议使用 10～20 对图片。";
 
-    public string LeftFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.LeftCameraMatrix[0,0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
-    public string RightFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.RightCameraMatrix[0,0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
+    /// <summary>平均重投影误差的排除阈值（像素）。</summary>
+    [ObservableProperty] private double _errorThreshold = 1;
+
+    /// <summary>是否存在可导出的有效结果。</summary>
     public bool HasCalibrationResult => CalibrationResult != null;
-    public string ReprojectionErrorDisplay => CalibrationResult != null
-        ? $"{CalibrationResult.ReprojectionError:F4} 像素" : "--";
 
-    // ── 外参/畸变的派生属性已由 StereoParameters 内置提供 ──
+    /// <summary>畸变设置在固定内参模式下不可编辑。</summary>
+    public bool CanEditDistortion => !UseFixedIntrinsics;
 
-    /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(StereoCalibrationParams? value)
-    {
-        OnPropertyChanged(nameof(LeftFocalMm));
-        OnPropertyChanged(nameof(RightFocalMm));
-        OnPropertyChanged(nameof(HasCalibrationResult));
-        OnPropertyChanged(nameof(ReprojectionErrorDisplay));
-    }
+    /// <summary>图片对统计。</summary>
+    public string DatasetSummary => $"共 {ImagePairs.Count} 对 · 检测成功 {ImagePairs.Count(pair => pair.IsDetected)} 对 · 参与 {ImagePairs.Count(pair => pair.IsDetected && pair.IsIncluded)} 对";
 
-    /// <summary>棋盘格配置变化时，清空所有角点缓存</summary>
-    partial void OnChessboardConfigChanged(ChessboardConfig value)
-    {
-        ValidPairs.Clear();
-        LeftPendingPaths.Clear();
-        RightPendingPaths.Clear();
-        SelectedPair = null;
-        LeftPreviewImage = null;
-        RightPreviewImage = null;
-        StatusText = "棋盘格配置已变更，角点缓存已清空，请重新导入图片";
-    }
+    /// <summary>整体质量统计。</summary>
+    public string ResultSummary => CalibrationResult == null ? "尚未标定，或数据已改变，请重新标定。" :
+        $"图片对数 {(CalibrationResult.ImageCount > 0 ? CalibrationResult.ImageCount.ToString() : "文件未记录")} · " +
+        $"平均误差 {(double.IsFinite(CalibrationResult.MeanReprojectionError) ? CalibrationResult.MeanReprojectionError.ToString("F4") : "--")} px · " +
+        $"RMS {CalibrationResult.ReprojectionError:F4} px · 基线 {CalibrationResult.Baseline:F3} mm";
 
-    /// <summary>选中的图片对变化时，自动更新角点预览图</summary>
-    partial void OnSelectedPairChanged(DetectedImagePair? value)
-    {
-        if (value == null)
-        {
-            LeftPreviewImage = null;
-            RightPreviewImage = null;
-            return;
-        }
-        // 使用棋盘格内角点数构建 Size（列数, 行数）
-        var patternSize = new OpenCvSharp.Size(ChessboardConfig.CornerCols, ChessboardConfig.CornerRows);
-        LeftPreviewImage = DrawCornersPreview(value.LeftPath, value.LeftCorners, patternSize);
-        RightPreviewImage = DrawCornersPreview(value.RightPath, value.RightCorners, patternSize);
-    }
+    /// <summary>左相机的物理焦距。</summary>
+    public string LeftFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.LeftCameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "--";
 
-    // ═══════════════════════════════════════════════
-    //  构造器
-    // ═══════════════════════════════════════════════
+    /// <summary>右相机的物理焦距。</summary>
+    public string RightFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.RightCameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "--";
 
-    public StereoCalibrationViewModel(CalibrationService calibrationService)
+    /// <summary>创建页面并注入测距页面用于接收当前结果。</summary>
+    /// <param name="calibrationService">标定服务。</param>
+    /// <param name="distanceService">校正服务。</param>
+    /// <param name="distanceViewModel">测距状态。</param>
+    /// <param name="mainViewModel">导航状态。</param>
+    public StereoCalibrationViewModel(CalibrationService calibrationService, DistanceService distanceService,
+        DistanceViewModel distanceViewModel, MainViewModel mainViewModel)
     {
         _calibrationService = calibrationService;
+        _distanceService = distanceService;
+        _distanceViewModel = distanceViewModel;
+        _mainViewModel = mainViewModel;
+        ChessboardConfig.PropertyChanged += OnConfigChanged;
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 导入图片
-    // ═══════════════════════════════════════════════
-
-    /// <summary>导入左相机图片文件夹</summary>
-    [RelayCommand]
-    private void ImportLeftImages()
+    /// <summary>切换内参模式后重新标定。</summary>
+    /// <param name="value">是否固定内参。</param>
+    partial void OnUseFixedIntrinsicsChanged(bool value)
     {
-        var paths = ImportImagesFromFolder("选择左相机标定图片文件夹");
-        if (paths.Count == 0) return;
-        foreach (var p in paths) LeftPendingPaths.Add(p);
-        StatusText = $"左图已导入 {LeftPendingPaths.Count} 张，待检测";
+        InvalidateResult(true);
+        OnPropertyChanged(nameof(CanEditDistortion));
+        IntrinsicsSummary = value ? "请导入左右两份单目标定 YAML（固定内参）" : "联合估计左右内参和双目外参";
     }
 
-    /// <summary>导入右相机图片文件夹</summary>
-    [RelayCommand]
-    private void ImportRightImages()
+    /// <summary>刷新结果显示、释放旧校正映射。</summary>
+    /// <param name="value">当前结果。</param>
+    partial void OnCalibrationResultChanged(StereoCalibrationParams? value)
     {
-        var paths = ImportImagesFromFolder("选择右相机标定图片文件夹");
-        if (paths.Count == 0) return;
-        foreach (var p in paths) RightPendingPaths.Add(p);
-        StatusText = $"右图已导入 {RightPendingPaths.Count} 张，待检测";
+        _previewRectify?.Dispose();
+        _previewRectify = null;
+        OnPropertyChanged(nameof(HasCalibrationResult));
+        OnPropertyChanged(nameof(ResultSummary));
+        OnPropertyChanged(nameof(LeftFocalMm));
+        OnPropertyChanged(nameof(RightFocalMm));
+        UpdatePreview();
     }
 
-
-    /// <summary>对左右待配对图片执行角点检测，结果加入 ValidPairs</summary>
-    [RelayCommand]
-    private async Task DetectCornersAsync()
+    /// <summary>选中图片对后更新角点与校正预览。</summary>
+    /// <param name="value">选中记录。</param>
+    partial void OnSelectedPairChanged(DetectedImagePair? value)
     {
-        int pairCount = System.Math.Min(LeftPendingPaths.Count, RightPendingPaths.Count);
-        if (pairCount == 0)
+        UpdatePreview();
+    }
+
+    /// <summary>配置变化时使旧参数失效，内角点行列变化时重新检测。</summary>
+    /// <param name="sender">配置对象。</param>
+    /// <param name="e">变更字段。</param>
+    private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ChessboardConfig.CornerCols) or nameof(ChessboardConfig.CornerRows))
         {
-            StatusText = "错误：左右至少各导入 1 张图片才能进行角点检测";
-            return;
+            ReplacePairs(ImagePairs.Select(pair => new DetectedImagePair
+            {
+                LeftPath = pair.LeftPath,
+                RightPath = pair.RightPath
+            }).ToList());
         }
+        InvalidateResult(true);
+        StatusText = "配置已改变，请重新标定；内角点行列变化后需重新分析。";
+    }
 
-        IsBusy = true;
-        StatusText = $"正在进行角点检测（{pairCount} 对）...";
+    /// <summary>发布浏览器记录并监听参与选项。</summary>
+    /// <param name="pairs">全部图片对。</param>
+    private void ReplacePairs(IEnumerable<DetectedImagePair> pairs)
+    {
+        foreach (var pair in ImagePairs)
+            pair.PropertyChanged -= OnPairChanged;
+        SelectedPair = null;
+        ImagePairs = new ObservableCollection<DetectedImagePair>(pairs);
+        foreach (var pair in ImagePairs)
+            pair.PropertyChanged += OnPairChanged;
+        OnPropertyChanged(nameof(DatasetSummary));
+        SelectedPair = ImagePairs.FirstOrDefault();
+    }
 
+    /// <summary>修改参与选项后使旧参数失效，保留上一轮误差供筛选。</summary>
+    /// <param name="sender">图片对。</param>
+    /// <param name="e">变更字段。</param>
+    private void OnPairChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(DetectedImagePair.IsIncluded))
+            return;
+        InvalidateResult(false);
+        OnPropertyChanged(nameof(DatasetSummary));
+        StatusText = "参与图片对已改变，请重新标定。误差条保留上一轮结果供筛选。";
+    }
+
+    /// <summary>使旧结果失效并按需清除逐对误差。</summary>
+    /// <param name="clearErrors">是否清除误差。</param>
+    private void InvalidateResult(bool clearErrors)
+    {
+        foreach (var pair in ImagePairs)
+        {
+            pair.LeftProjectedCorners = [];
+            pair.RightProjectedCorners = [];
+            if (!clearErrors)
+                continue;
+            pair.MeanError = double.NaN;
+            pair.LeftMeanError = double.NaN;
+            pair.RightMeanError = double.NaN;
+        }
+        CalibrationResult = null;
+        UpdatePreview();
+    }
+
+    /// <summary>一次选择左右文件夹，按名称配对并追加，随后自动检测。</summary>
+    [RelayCommand]
+    private async Task ImportImagePairsAsync()
+    {
+        var leftDialog = new OpenFolderDialog { Title = "添加图片对：选择左相机文件夹" };
+        if (leftDialog.ShowDialog() != true)
+            return;
+        var rightDialog = new OpenFolderDialog { Title = "添加图片对：选择右相机文件夹" };
+        if (rightDialog.ShowDialog() != true)
+            return;
         try
         {
-            var detectedImagePairs = _calibrationService.DetectImagePairs(LeftPendingPaths, RightPendingPaths, ChessboardConfig);
-
-            ValidPairs.Clear();
-            foreach (var pair in detectedImagePairs)
-            {
-                ValidPairs.Add(pair);
-            }
-
-            var rejectCounts = LeftPendingPaths.Count - ValidPairs.Count;
-            StatusText = $"角点检测完成：Accepted: {ValidPairs.Count}，Rejected: {rejectCounts}";
+            var added = _calibrationService.PairImages(_calibrationService.GetImagePaths(leftDialog.FolderName),
+                _calibrationService.GetImagePaths(rightDialog.FolderName));
+            var pairs = ImagePairs.Concat(added)
+                .DistinctBy(pair => (pair.LeftPath.ToUpperInvariant(), pair.RightPath.ToUpperInvariant())).ToList();
+            ReplacePairs(pairs);
+            await DetectCornersAsync(CancellationToken.None);
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            StatusText = $"角点检测失败：{ex.Message}";
+            StatusText = $"添加失败：{ex.Message}。请检查是否有重名编号及 left/right 命名。";
+        }
+    }
+
+    /// <summary>后台检测图片对，保留失败原因供检查。</summary>
+    /// <param name="ct">图片对之间生效的取消令牌。</param>
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task DetectCornersAsync(CancellationToken ct)
+    {
+        if (ImagePairs.Count == 0)
+        {
+            StatusText = "请先添加左右图片对。";
+            return;
+        }
+        IsBusy = true;
+        Progress = 0;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _analysisCancellation = cancellation;
+        ct = cancellation.Token;
+        InvalidateResult(true);
+        var pairs = ImagePairs.ToList();
+        var progress = new Progress<int>(count =>
+        {
+            Progress = count * 100.0 / pairs.Count;
+            StatusText = $"正在分析图片对 {count}/{pairs.Count}...";
+        });
+        try
+        {
+            var analyzed = await Task.Run(() => _calibrationService.AnalyzePairs(pairs, ChessboardConfig, progress, ct), ct);
+            ReplacePairs(analyzed);
+            StatusText = $"分析完成：{DatasetSummary}。检查左右角点原点是否对应后开始标定。";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "分析已取消，可以重新分析。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"分析失败：{ex.Message}";
         }
         finally
         {
+            _analysisCancellation = null;
             IsBusy = false;
         }
-
-        SelectedPair = ValidPairs.FirstOrDefault();
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 删除图片对
-    // ═══════════════════════════════════════════════
-
+    /// <summary>请求在当前图片对检测结束后停止分析。</summary>
     [RelayCommand]
-    private void DeletePair(DetectedImagePair pair)
+    private void CancelAnalysis()
     {
-        if (SelectedPair == pair)
-            SelectedPair = null;
-        ValidPairs.Remove(pair);
-        StatusText = $"已删除 1 对，剩余 {ValidPairs.Count} 对有效图片";
+        _analysisCancellation?.Cancel();
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 标定与持久化
-    // ═══════════════════════════════════════════════
-
-    [RelayCommand(IncludeCancelCommand = true)]
-    private async Task StartCalibrationAsync(CancellationToken ct)
+    /// <summary>后台求解并发布逐对误差；固定内参时不重新估计畸变。</summary>
+    [RelayCommand]
+    private async Task StartCalibrationAsync()
     {
-        if (ValidPairs.Count < 3)
-        {
-            StatusText = $"错误：至少需要 3 对有效图片，当前仅 {ValidPairs.Count} 对";
-            return;
-        }
-
+        var pairs = ImagePairs.Where(pair => pair.IsIncluded && pair.IsDetected)
+            .Select(pair => new DetectedImagePair
+            {
+                LeftPath = pair.LeftPath,
+                RightPath = pair.RightPath,
+                LeftCorners = pair.LeftCorners,
+                RightCorners = pair.RightCorners,
+                ImageSize = pair.ImageSize
+            }).ToList();
         IsBusy = true;
-        StatusText = $"正在进行标定（{ValidPairs.Count} 对图片）...";
-
+        InvalidateResult(true);
+        StatusText = "正在标定并计算逐对误差...";
         try
         {
-            CalibrationResult = _calibrationService.StereoCalibrate(ChessboardConfig, ValidPairs);
-
-            StatusText = $"标定完成！共使用 {ValidPairs.Count} 对图片，结果可保存。";
+            if (UseFixedIntrinsics && (_fixedLeft == null || _fixedRight == null))
+                throw new InvalidOperationException("请先导入左右两份单目标定文件。");
+            var result = await Task.Run(() => _calibrationService.StereoCalibrate(ChessboardConfig, pairs,
+                UseFixedIntrinsics ? _fixedLeft : null, UseFixedIntrinsics ? _fixedRight : null));
+            foreach (var pair in pairs)
+            {
+                var target = ImagePairs.First(item => item.LeftPath == pair.LeftPath && item.RightPath == pair.RightPath);
+                target.MeanError = pair.MeanError;
+                target.LeftMeanError = pair.LeftMeanError;
+                target.RightMeanError = pair.RightMeanError;
+                target.LeftProjectedCorners = pair.LeftProjectedCorners;
+                target.RightProjectedCorners = pair.RightProjectedCorners;
+            }
+            CalibrationResult = result;
+            Progress = 100;
+            StatusText = "标定完成。检查逐对误差和校正图；排除问题图片对后可重新标定。";
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             StatusText = $"标定失败：{ex.Message}";
         }
@@ -243,125 +310,178 @@ public partial class StereoCalibrationViewModel : ObservableObject
         }
     }
 
+    /// <summary>导入左右两份单目内参；只有两份均读取成功才替换当前配置。</summary>
+    [RelayCommand]
+    private void LoadFixedIntrinsics()
+    {
+        var leftDialog = new OpenFileDialog { Title = "选择左相机单目标定 YAML", Filter = "OpenCV YAML|*.yaml;*.yml" };
+        if (leftDialog.ShowDialog() != true)
+            return;
+        var rightDialog = new OpenFileDialog { Title = "选择右相机单目标定 YAML", Filter = "OpenCV YAML|*.yaml;*.yml" };
+        if (rightDialog.ShowDialog() != true)
+            return;
+        try
+        {
+            var left = _calibrationService.LoadCalibrationParams(leftDialog.FileName);
+            var right = _calibrationService.LoadCalibrationParams(rightDialog.FileName);
+            _fixedLeft = left;
+            _fixedRight = right;
+            UseFixedIntrinsics = true;
+            InvalidateResult(true);
+            IntrinsicsSummary = $"左：{Path.GetFileName(leftDialog.FileName)} / 右：{Path.GetFileName(rightDialog.FileName)}";
+            StatusText = "固定内参已导入。标定只求双目外参，图片尺寸必须与内参文件一致。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"导入内参失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>排除超过平均误差阈值的图片对，允许重新勾选。</summary>
+    [RelayCommand]
+    private void ExcludeHighError()
+    {
+        var pairs = ImagePairs.Where(pair => pair.IsIncluded && pair.MeanError > ErrorThreshold).ToList();
+        foreach (var pair in pairs)
+            pair.IsIncluded = false;
+        StatusText = $"已排除 {pairs.Count} 对，请重新标定；可勾选“参与”恢复。";
+    }
+
+    /// <summary>从数据集移除记录，不删除原图。</summary>
+    /// <param name="pair">待移除图片对。</param>
+    [RelayCommand]
+    private void DeletePair(DetectedImagePair pair)
+    {
+        ReplacePairs(ImagePairs.Where(item => item != pair).ToList());
+        InvalidateResult(true);
+    }
+
+    /// <summary>导出当前有效的双目标定结果。</summary>
     [RelayCommand]
     private void SaveCalibrationFile()
     {
         if (CalibrationResult == null)
         {
-            StatusText = "错误：尚未完成标定，没有可保存的结果";
+            StatusText = "当前结果无效，请先重新标定。";
             return;
         }
-
         var dialog = new SaveFileDialog
         {
-            Title = "保存标定结果",
-            Filter = "YAML 文件|*.yaml;*.yml|所有文件|*.*",
-            DefaultExt = ".yaml",
-            FileName = "stereoCalibrationParams.yaml",
-            RestoreDirectory = true
+            Title = "导出双目参数",
+            Filter = "OpenCV YAML|*.yaml;*.yml",
+            FileName = "stereoCalibrationParams.yaml"
         };
-
         if (dialog.ShowDialog() != true)
             return;
-
         try
         {
             _calibrationService.SaveStereoCalibrationParams(dialog.FileName, CalibrationResult);
-            StatusText = $"标定结果已保存至：{dialog.FileName}";
+            StatusText = $"参数已导出：{dialog.FileName}";
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            StatusText = $"保存失败：{ex.Message}";
+            StatusText = $"导出失败：{ex.Message}";
         }
     }
 
-    /// <summary>清空所有标定相关数据，用于重新导入图片并标定</summary>
-    [RelayCommand]
-    private void ClearData()
-    {
-        ValidPairs.Clear();
-        LeftPendingPaths.Clear();
-        RightPendingPaths.Clear();
-        CalibrationResult = null;
-        SelectedPair = null;
-        LeftPreviewImage = null;
-        RightPreviewImage = null;
-        StatusText = "数据已清空，请重新导入左右图片并开始标定";
-    }
-
+    /// <summary>加载已有双目参数用于查看、校正预览或测距。</summary>
     [RelayCommand]
     private void LoadCalibrationFile()
     {
-        var dialog = new OpenFileDialog
-        {
-            Title = "加载标定结果文件",
-            Filter = "YAML 文件|*.yaml;*.yml|所有文件|*.*",
-            RestoreDirectory = true
-        };
-
+        var dialog = new OpenFileDialog { Title = "加载双目参数", Filter = "OpenCV YAML|*.yaml;*.yml" };
         if (dialog.ShowDialog() != true)
             return;
-
         try
         {
+            InvalidateResult(true);
             CalibrationResult = _calibrationService.LoadStereoCalibrationParams(dialog.FileName);
-            StatusText = $"已加载标定结果：{Path.GetFileName(dialog.FileName)}";
+            StatusText = "已加载双目参数；逐对误差需要使用当前图片重新标定。";
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             StatusText = $"加载失败：{ex.Message}";
         }
     }
 
-    // ═══════════════════════════════════════════════
-    //  私有方法 — 图片导入辅助
-    // ═══════════════════════════════════════════════
-
-    private static List<string> ImportImagesFromFolder(string title)
+    /// <summary>将当前有效结果传入测距页并切换页面。</summary>
+    [RelayCommand]
+    private void UseForDistance()
     {
-        var dialog = new OpenFolderDialog
+        if (CalibrationResult == null)
+            return;
+        try
         {
-            Title = title,
-            InitialDirectory = "D:\\0_Data\\个人资料\\Projects\\StereoTool"
-        };
-
-        if (dialog.ShowDialog() != true)
-            return [];
-
-        return Directory.EnumerateFiles(dialog.FolderName)
-            .Where(f => ImageExtensions.Contains(Path.GetExtension(f),
-                StringComparer.OrdinalIgnoreCase))
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            _distanceViewModel.UseCalibration(CalibrationResult);
+            _mainViewModel.NavigateDistanceCommand.Execute(null);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"应用测距参数失败：{ex.Message}";
+        }
     }
 
-    // ═══════════════════════════════════════════════
-    //  私有方法 — 角点预览
-    // ═══════════════════════════════════════════════
-
-    /// <summary>在图片上绘制棋盘格角点并返回 WPF BitmapSource</summary>
-    private static BitmapSource DrawCornersPreview(string imagePath, Point2f[] corners, OpenCvSharp.Size patternSize)
+    /// <summary>清空图片和拟合结果，保留固定内参设置。</summary>
+    [RelayCommand]
+    private void ClearData()
     {
-        using var mat = Cv2.ImRead(imagePath, ImreadModes.Color);
-        if (mat.Empty())
-            return null!;
+        ReplacePairs([]);
+        InvalidateResult(true);
+        Progress = 0;
+        StatusText = "图片对和标定结果已清空。";
+    }
 
-        // 绘制检测到的角点（绿色十字 + 彩色连线）
-        Cv2.DrawChessboardCorners(mat, patternSize, corners, true);
-
-        // Mat → PNG 字节流 → BitmapImage
-        using var ms = new MemoryStream();
-        // OpenCvSharp4 中 ImWrite(string, Stream) 是 Mat 扩展方法，不可用；改用 ImEncode 编码为字节数组写入
-        byte[] pngBytes = mat.ImEncode(".png");
-        ms.Write(pngBytes, 0, pngBytes.Length);
-        ms.Position = 0;
-
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.StreamSource = ms;
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.EndInit();
-        bitmap.Freeze(); // 允许跨线程访问
-        return bitmap;
+    /// <summary>更新左右角点及校正预览；异常在页面交互边界处理。</summary>
+    private void UpdatePreview()
+    {
+        LeftPreviewImage = null;
+        RightPreviewImage = null;
+        RectifiedLeftImage = null;
+        RectifiedRightImage = null;
+        if (SelectedPair == null)
+            return;
+        try
+        {
+            if (File.Exists(SelectedPair.LeftPath))
+            {
+                using var left = _calibrationService.CreatePreview(SelectedPair.LeftPath, SelectedPair.LeftCorners,
+                    SelectedPair.LeftProjectedCorners, ChessboardConfig);
+                LeftPreviewImage = left.ToBitmapSource();
+                LeftPreviewImage.Freeze();
+            }
+            if (File.Exists(SelectedPair.RightPath))
+            {
+                using var right = _calibrationService.CreatePreview(SelectedPair.RightPath, SelectedPair.RightCorners,
+                    SelectedPair.RightProjectedCorners, ChessboardConfig);
+                RightPreviewImage = right.ToBitmapSource();
+                RightPreviewImage.Freeze();
+            }
+            if (CalibrationResult == null || LeftPreviewImage == null || RightPreviewImage == null)
+                return;
+            if (LeftPreviewImage.PixelWidth != CalibrationResult.ImageWidth || LeftPreviewImage.PixelHeight != CalibrationResult.ImageHeight ||
+                RightPreviewImage.PixelWidth != CalibrationResult.ImageWidth || RightPreviewImage.PixelHeight != CalibrationResult.ImageHeight)
+                return;
+            _previewRectify ??= _distanceService.GetRectifyParams(CalibrationResult);
+            using var leftSource = Cv2.ImRead(SelectedPair.LeftPath, ImreadModes.Color);
+            using var rightSource = Cv2.ImRead(SelectedPair.RightPath, ImreadModes.Color);
+            using var rectLeft = new Mat();
+            using var rectRight = new Mat();
+            Cv2.Remap(leftSource, rectLeft, _previewRectify.LeftMapX, _previewRectify.LeftMapY, InterpolationFlags.Linear);
+            Cv2.Remap(rightSource, rectRight, _previewRectify.RightMapX, _previewRectify.RightMapY, InterpolationFlags.Linear);
+            var imageHeight = rectLeft.Height;
+            var imageWidth = rectLeft.Width;
+            for (var y = 20; y < imageHeight; y += 40)
+            {
+                Cv2.Line(rectLeft, new Point(0, y), new Point(imageWidth - 1, y), Scalar.LimeGreen);
+                Cv2.Line(rectRight, new Point(0, y), new Point(imageWidth - 1, y), Scalar.LimeGreen);
+            }
+            RectifiedLeftImage = rectLeft.ToBitmapSource();
+            RectifiedRightImage = rectRight.ToBitmapSource();
+            RectifiedLeftImage.Freeze();
+            RectifiedRightImage.Freeze();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"预览失败：{ex.Message}";
+        }
     }
 }

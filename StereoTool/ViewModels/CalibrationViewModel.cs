@@ -1,224 +1,245 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows.Media.Imaging;
-using StereoTool.Models;
-using StereoTool.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
-using OpenCvSharp;
+using OpenCvSharp.WpfExtensions;
+using StereoTool.Models;
+using StereoTool.Services;
 
 namespace StereoTool.ViewModels;
 
-/// <summary>
-/// 单目标定页面的 ViewModel（合并配置 + 标定）。
-/// 棋盘格配置、图像导入、角点检测、标定执行、结果展示一体。
-/// 与双目标定相比，仅处理单相机图像序列，不区分左右。
-/// </summary>
+/// <summary>单目标定工作流：添加分析、选择样本、标定、评估、改进和导出。</summary>
 public partial class CalibrationViewModel : ObservableObject
 {
     private readonly CalibrationService _calibrationService;
+    private CancellationTokenSource? _analysisCancellation;
 
-    /// <summary>支持的图片扩展名</summary>
-    private static readonly string[] ImageExtensions =
-        [".bmp", ".jpg", ".jpeg", ".png", ".tiff", ".tif"];
+    /// <summary>棋盘格与针孔畸变模型设置。</summary>
+    public ChessboardConfig ChessboardConfig { get; } = new();
 
-    // ═══════════════════════════════════════════════
-    //  绑定属性 — 配置
-    // ═══════════════════════════════════════════════
-
-    /// <summary>棋盘格配置参数</summary>
-    [ObservableProperty] private ChessboardConfig _chessboardConfig = new();
-
-    /// <summary>待检测角点的图像路径列表</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PendingCount))]
-    private ObservableCollection<string> _imagePaths = [];
-
-    /// <summary>已通过角点检测的有效图像列表</summary>
+    /// <summary>包含成功、失败和用户排除图片的数据浏览器。</summary>
     [ObservableProperty] private ObservableCollection<DetectedImage> _detectedImages = [];
 
-    /// <summary>列表中当前选中的图像，用于角点预览</summary>
+    /// <summary>当前预览图片。</summary>
     [ObservableProperty] private DetectedImage? _selectedImage;
 
-    // ═══════════════════════════════════════════════
-    //  绑定属性 — 标定执行与结果
-    // ═══════════════════════════════════════════════
-
-    /// <summary>标定完成后的结果对象</summary>
+    /// <summary>当前有效的标定结果；数据或模型改变后立即失效。</summary>
     [ObservableProperty] private CalibrationParams? _calibrationResult;
 
-    /// <summary>状态栏文本</summary>
-    [ObservableProperty] private string _statusText = "就绪 — 设置棋盘格参数，导入图片，点击「检测角点」";
-
-    /// <summary>是否正在执行异步操作</summary>
-    [ObservableProperty] private bool _isBusy;
-
-    /// <summary>角点预览图（绘制角点后的结果图）</summary>
+    /// <summary>角点和重投影点预览。</summary>
     [ObservableProperty] private BitmapSource? _previewImage;
 
-    // ═══════════════════════════════════════════════
-    //  派生属性 — 统计
-    // ═══════════════════════════════════════════════
+    /// <summary>去畸变预览。</summary>
+    [ObservableProperty] private BitmapSource? _undistortedImage;
 
-    /// <summary>待检测数量</summary>
-    public int PendingCount => ImagePaths.Count;
+    /// <summary>是否正在分析或标定。</summary>
+    [ObservableProperty] private bool _isBusy;
 
-    // ═══════════════════════════════════════════════
-    //  派生属性 — 焦距/主点显示
-    // ═══════════════════════════════════════════════
+    /// <summary>分析进度，范围为 0 到 100。</summary>
+    [ObservableProperty] private double _progress;
 
-    /// <summary>物理焦距（mm），由 fx × 像元尺寸 / 1000 计算得出</summary>
-    public string FocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.CameraMatrix[0,0] * CalibrationResult.PixelSizeUm / 1000.0:F2}" : "--";
+    /// <summary>操作结果和采集提示。</summary>
+    [ObservableProperty] private string _statusText = "设置棋盘格，添加图片后自动分析；建议采集 10～20 张不同位置和倾角的图片。";
 
-    // ── Fx/Fy/Cx/Cy/K1/K2/P1/P2/K3 派生属性已由 CameraParameters 内置提供 ──
+    /// <summary>用于批量排除的平均误差阈值（像素）。</summary>
+    [ObservableProperty] private double _errorThreshold = 1;
+
+    /// <summary>是否存在可导出的当前结果。</summary>
     public bool HasCalibrationResult => CalibrationResult != null;
-    public string ReprojectionErrorDisplay => CalibrationResult != null
-        ? $"{CalibrationResult.ReprojectionError:F4} 像素" : "--";
 
-    // ═══════════════════════════════════════════════
-    //  属性变更回调
-    // ═══════════════════════════════════════════════
+    /// <summary>当前数据浏览器统计。</summary>
+    public string DatasetSummary => $"共 {DetectedImages.Count} 张 · 检测成功 {DetectedImages.Count(image => image.IsDetected)} 张 · 参与 {DetectedImages.Count(image => image.IsDetected && image.IsIncluded)} 张";
 
-    /// <summary>标定结果变化时，同步刷新所有派生属性</summary>
-    partial void OnCalibrationResultChanged(CalibrationParams? value)
-    {
-        OnPropertyChanged(nameof(FocalMm));
-        OnPropertyChanged(nameof(HasCalibrationResult));
-        OnPropertyChanged(nameof(ReprojectionErrorDisplay));
-    }
+    /// <summary>标定全局质量统计；均值和 RMS 分开展示。</summary>
+    public string ResultSummary => CalibrationResult == null ? "尚未标定，或数据已改变，请重新标定。" :
+        $"图片数 {(CalibrationResult.ImageCount > 0 ? CalibrationResult.ImageCount.ToString() : "文件未记录")} · " +
+        $"平均误差 {(double.IsFinite(CalibrationResult.MeanReprojectionError) ? CalibrationResult.MeanReprojectionError.ToString("F4") : "--")} px · " +
+        $"RMS {CalibrationResult.ReprojectionError:F4} px";
 
-    /// <summary>棋盘格配置变化时，清空所有角点缓存</summary>
-    partial void OnChessboardConfigChanged(ChessboardConfig value)
-    {
-        DetectedImages.Clear();
-        ImagePaths.Clear();
-        SelectedImage = null;
-        PreviewImage = null;
-        StatusText = "棋盘格配置已变更，角点缓存已清空，请重新导入图片";
-    }
+    /// <summary>以毫米表示的物理焦距。</summary>
+    public string FocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
+        ? $"{CalibrationResult.CameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "未提供像元尺寸";
 
-    /// <summary>选中的图像变化时，自动更新角点预览图</summary>
-    partial void OnSelectedImageChanged(DetectedImage? value)
-    {
-        if (value == null)
-        {
-            PreviewImage = null;
-            return;
-        }
-        // 使用棋盘格内角点数构建 Size（列数, 行数）
-        var patternSize = new Size(ChessboardConfig.CornerCols, ChessboardConfig.CornerRows);
-        PreviewImage = DrawCornersPreview(value.ImagePath, value.Corners, patternSize);
-    }
-
-    // ═══════════════════════════════════════════════
-    //  构造器
-    // ═══════════════════════════════════════════════
-
-    /// <summary>
-    /// 构造 MonoCalibrationViewModel，注入标定服务。
-    /// </summary>
-    /// <param name="calibrationService">标定服务（由 DI 容器注入）</param>
+    /// <summary>创建页面并监听配置内部属性的变化。</summary>
+    /// <param name="calibrationService">标定与图片分析服务。</param>
     public CalibrationViewModel(CalibrationService calibrationService)
     {
         _calibrationService = calibrationService;
+        ChessboardConfig.PropertyChanged += OnConfigChanged;
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 导入图片
-    // ═══════════════════════════════════════════════
-
-    /// <summary>导入标定图片文件夹</summary>
-    [RelayCommand]
-    private void ImportImages()
+    /// <summary>结果变化时刷新统计和图像。</summary>
+    /// <param name="value">当前结果。</param>
+    partial void OnCalibrationResultChanged(CalibrationParams? value)
     {
-        var paths = ImportImagesFromFolder("选择标定图片文件夹");
-        if (paths.Count == 0) return;
-        foreach (var p in paths) ImagePaths.Add(p);
-        StatusText = $"已导入 {ImagePaths.Count} 张图片，请点击「检测角点」";
+        OnPropertyChanged(nameof(HasCalibrationResult));
+        OnPropertyChanged(nameof(ResultSummary));
+        OnPropertyChanged(nameof(FocalMm));
+        UpdatePreview();
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 角点检测
-    // ═══════════════════════════════════════════════
-
-    /// <summary>对待检测图片执行角点检测，结果加入 ValidImages</summary>
-    [RelayCommand]
-    private async Task DetectCornersAsync()
+    /// <summary>选中图片后显示原图检测点、重投影点及去畸变结果。</summary>
+    /// <param name="value">选中的图片。</param>
+    partial void OnSelectedImageChanged(DetectedImage? value)
     {
-        if (ImagePaths.Count == 0)
+        UpdatePreview();
+    }
+
+    /// <summary>设置变化后使结果失效；只有角点行列变化需要重新检测。</summary>
+    /// <param name="sender">配置对象。</param>
+    /// <param name="e">变更字段。</param>
+    private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ChessboardConfig.CornerCols) or nameof(ChessboardConfig.CornerRows))
         {
-            StatusText = "错误：至少导入 1 张图片才能进行角点检测";
-            return;
+            ReplaceImages(DetectedImages.Select(image => new DetectedImage { ImagePath = image.ImagePath }).ToList());
         }
+        InvalidateResult(true);
+        StatusText = "配置已改变，请重新标定；内角点行列变化后需重新分析。";
+    }
 
-        IsBusy = true;
-        StatusText = $"正在进行角点检测（{ImagePaths.Count} 张）...";
-
-        try
-        {
-            var detectedImages = _calibrationService.DetectImages(ImagePaths, ChessboardConfig);
-
-            DetectedImages.Clear();
-            foreach (var detectedImage in detectedImages)
-            {
-                DetectedImages.Add(detectedImage);
-            }
-
-            var rejectCounts = ImagePaths.Count - DetectedImages.Count;
-            StatusText = $"角点检测完成：Accepted: {DetectedImages.Count}，Rejected: {rejectCounts}";
-        }
-        catch (System.Exception ex)
-        {
-            StatusText = $"角点检测失败：{ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-
+    /// <summary>更新图片浏览器并订阅参与选项。</summary>
+    /// <param name="images">全部图片记录。</param>
+    private void ReplaceImages(IEnumerable<DetectedImage> images)
+    {
+        foreach (var image in DetectedImages)
+            image.PropertyChanged -= OnImageChanged;
+        SelectedImage = null;
+        DetectedImages = new ObservableCollection<DetectedImage>(images);
+        foreach (var image in DetectedImages)
+            image.PropertyChanged += OnImageChanged;
+        OnPropertyChanged(nameof(DatasetSummary));
         SelectedImage = DetectedImages.FirstOrDefault();
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 删除图像
-    // ═══════════════════════════════════════════════
-
-    /// <summary>从有效列表中删除指定图像</summary>
-    [RelayCommand]
-    private void DeleteImage(DetectedImage image)
+    /// <summary>改变参与选项后使旧参数失效，保留上一轮误差以便继续筛选。</summary>
+    /// <param name="sender">图片记录。</param>
+    /// <param name="e">变更字段。</param>
+    private void OnImageChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (SelectedImage == image)
-            SelectedImage = null;
-        DetectedImages.Remove(image);
-        StatusText = $"已删除 1 张，剩余 {DetectedImages.Count} 张有效图片";
+        if (e.PropertyName != nameof(DetectedImage.IsIncluded))
+            return;
+        InvalidateResult(false);
+        OnPropertyChanged(nameof(DatasetSummary));
+        StatusText = "参与图片已改变，请重新标定。误差条保留上一轮结果供筛选。";
     }
 
-    // ═══════════════════════════════════════════════
-    //  命令 — 标定与持久化
-    // ═══════════════════════════════════════════════
-
-    /// <summary>对有效图像执行单目标定</summary>
-    [RelayCommand(IncludeCancelCommand = true)]
-    private async Task StartCalibrationAsync(CancellationToken ct)
+    /// <summary>清除旧结果以及可选的诊断缓存。</summary>
+    /// <param name="clearErrors">是否清除上一轮误差。</param>
+    private void InvalidateResult(bool clearErrors)
     {
-        if (DetectedImages.Count < 3)
+        foreach (var image in DetectedImages)
         {
-            StatusText = $"错误：至少需要 3 张有效图片，当前 {DetectedImages.Count} 张";
-            return;
+            image.ProjectedCorners = [];
+            if (clearErrors)
+                image.MeanError = double.NaN;
         }
+        CalibrationResult = null;
+        UpdatePreview();
+    }
 
-        IsBusy = true;
-        StatusText = $"正在进行单目标定（{DetectedImages.Count} 张图片）...";
-
+    /// <summary>从文件夹追加图片，跳过重复路径，并自动分析全部图片。</summary>
+    [RelayCommand]
+    private async Task ImportImagesAsync()
+    {
+        var dialog = new OpenFolderDialog { Title = "添加单目标定图片文件夹" };
+        if (dialog.ShowDialog() != true)
+            return;
         try
         {
-            CalibrationResult = _calibrationService.CameraCalibrate(ChessboardConfig, DetectedImages);
-
-            StatusText = $"标定完成！共使用 {DetectedImages.Count} 张图片，结果可保存。";
+            var paths = DetectedImages.Select(image => image.ImagePath)
+                .Concat(_calibrationService.GetImagePaths(dialog.FolderName))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            ReplaceImages(paths.Select(path => new DetectedImage { ImagePath = path }));
+            await DetectCornersAsync(CancellationToken.None);
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
+        {
+            StatusText = $"添加图片失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>后台分析图片，进度与最终记录在 UI 线程发布。</summary>
+    /// <param name="ct">图片之间生效的取消令牌。</param>
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task DetectCornersAsync(CancellationToken ct)
+    {
+        if (DetectedImages.Count == 0)
+        {
+            StatusText = "请先添加图片。";
+            return;
+        }
+        IsBusy = true;
+        Progress = 0;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _analysisCancellation = cancellation;
+        ct = cancellation.Token;
+        InvalidateResult(true);
+        var paths = DetectedImages.Select(image => image.ImagePath).ToList();
+        var progress = new Progress<int>(count =>
+        {
+            Progress = count * 100.0 / paths.Count;
+            StatusText = $"正在分析图片 {count}/{paths.Count}...";
+        });
+        try
+        {
+            var images = await Task.Run(() => _calibrationService.AnalyzeImages(paths, ChessboardConfig, progress, ct), ct);
+            ReplaceImages(images);
+            StatusText = $"分析完成：{DatasetSummary}。检查检测点后开始标定。";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "分析已取消，可以重新分析。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"图片分析失败：{ex.Message}";
+        }
+        finally
+        {
+            _analysisCancellation = null;
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>请求在当前图片检测结束后停止分析。</summary>
+    [RelayCommand]
+    private void CancelAnalysis()
+    {
+        _analysisCancellation?.Cancel();
+    }
+
+    /// <summary>后台求解后一次性发布逐图误差和有效参数。</summary>
+    [RelayCommand]
+    private async Task StartCalibrationAsync()
+    {
+        var images = DetectedImages.Where(image => image.IsIncluded && image.IsDetected)
+            .Select(image => new DetectedImage
+            {
+                ImagePath = image.ImagePath,
+                ImageSize = image.ImageSize,
+                Corners = image.Corners
+            }).ToList();
+        IsBusy = true;
+        InvalidateResult(true);
+        StatusText = "正在标定；完成后请检查逐图误差和去畸变图。";
+        try
+        {
+            var result = await Task.Run(() => _calibrationService.CameraCalibrate(ChessboardConfig, images));
+            foreach (var image in images)
+            {
+                var target = DetectedImages.First(item => item.ImagePath == image.ImagePath);
+                target.MeanError = image.MeanError;
+                target.ProjectedCorners = image.ProjectedCorners;
+            }
+            CalibrationResult = result;
+            Progress = 100;
+            StatusText = "标定完成。可排除高误差图片并重新标定，确认后导出 YAML。";
+        }
+        catch (Exception ex)
         {
             StatusText = $"标定失败：{ex.Message}";
         }
@@ -228,125 +249,104 @@ public partial class CalibrationViewModel : ObservableObject
         }
     }
 
-    /// <summary>保存标定结果到 YAML 文件</summary>
+    /// <summary>排除上一轮平均误差超过阈值的图片，允许勾选恢复。</summary>
+    [RelayCommand]
+    private void ExcludeHighError()
+    {
+        var images = DetectedImages.Where(image => image.IsIncluded && image.MeanError > ErrorThreshold).ToList();
+        foreach (var image in images)
+            image.IsIncluded = false;
+        StatusText = $"已排除 {images.Count} 张图片，请重新标定；可通过“参与”复选框恢复。";
+    }
+
+    /// <summary>从当前数据集移除指定记录，不删除磁盘文件。</summary>
+    /// <param name="image">待移除记录。</param>
+    [RelayCommand]
+    private void DeleteImage(DetectedImage image)
+    {
+        ReplaceImages(DetectedImages.Where(item => item != image).ToList());
+        InvalidateResult(true);
+    }
+
+    /// <summary>导出当前有效标定结果。</summary>
     [RelayCommand]
     private void SaveCalibrationFile()
     {
         if (CalibrationResult == null)
         {
-            StatusText = "错误：尚未完成标定，没有可保存的结果";
+            StatusText = "当前结果无效，请先重新标定。";
             return;
         }
-
         var dialog = new SaveFileDialog
         {
-            Title = "保存单目标定结果",
-            Filter = "YAML 文件|*.yaml;*.yml|所有文件|*.*",
-            DefaultExt = ".yaml",
-            FileName = "calibrationParams.yaml",
-            RestoreDirectory = true
+            Title = "导出单目参数",
+            Filter = "OpenCV YAML|*.yaml;*.yml",
+            FileName = "calibrationParams.yaml"
         };
-
         if (dialog.ShowDialog() != true)
             return;
-
         try
         {
             _calibrationService.SaveCalibrationParams(dialog.FileName, CalibrationResult);
-            StatusText = $"标定结果已保存至：{dialog.FileName}";
+            StatusText = $"参数已导出：{dialog.FileName}";
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            StatusText = $"保存失败：{ex.Message}";
+            StatusText = $"导出失败：{ex.Message}";
         }
     }
 
-    /// <summary>从 YAML 文件加载标定结果</summary>
+    /// <summary>加载参数用于查看与去畸变；不将导入结果冒充当前图片的拟合结果。</summary>
     [RelayCommand]
     private void LoadCalibrationFile()
     {
-        var dialog = new OpenFileDialog
-        {
-            Title = "加载标定结果文件",
-            Filter = "YAML 文件|*.yaml;*.yml|所有文件|*.*",
-            RestoreDirectory = true
-        };
-
+        var dialog = new OpenFileDialog { Title = "加载单目参数", Filter = "OpenCV YAML|*.yaml;*.yml" };
         if (dialog.ShowDialog() != true)
             return;
-
         try
         {
+            InvalidateResult(true);
             CalibrationResult = _calibrationService.LoadCalibrationParams(dialog.FileName);
-            StatusText = $"已加载标定结果：{Path.GetFileName(dialog.FileName)}";
+            StatusText = $"已加载 {Path.GetFileName(dialog.FileName)}，逐图误差需要使用当前数据重新标定。";
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             StatusText = $"加载失败：{ex.Message}";
         }
     }
 
-    /// <summary>清空所有标定相关数据，用于重新导入图片并标定</summary>
+    /// <summary>清空当前数据与结果。</summary>
     [RelayCommand]
     private void ClearData()
     {
-        DetectedImages.Clear();
-        ImagePaths.Clear();
-        CalibrationResult = null;
-        SelectedImage = null;
+        ReplaceImages([]);
+        InvalidateResult(true);
+        Progress = 0;
+        StatusText = "数据已清空。";
+    }
+
+    /// <summary>更新预览，并在页面交互边界处理图片读取异常。</summary>
+    private void UpdatePreview()
+    {
         PreviewImage = null;
-        StatusText = "数据已清空，请重新导入图片并开始标定";
-    }
-
-    // ═══════════════════════════════════════════════
-    //  私有方法 — 图片导入辅助
-    // ═══════════════════════════════════════════════
-
-    /// <summary>弹出文件夹选择对话框并返回排序后的图片路径列表</summary>
-    private static List<string> ImportImagesFromFolder(string title)
-    {
-        var dialog = new OpenFolderDialog
+        UndistortedImage = null;
+        if (SelectedImage == null)
+            return;
+        try
         {
-            Title = title,
-            InitialDirectory = "D:\\0_Data\\个人资料\\Projects\\StereoTool"
-        };
-
-        if (dialog.ShowDialog() != true)
-            return [];
-
-        return Directory.EnumerateFiles(dialog.FolderName)
-            .Where(f => ImageExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    // ═══════════════════════════════════════════════
-    //  私有方法 — 角点预览
-    // ═══════════════════════════════════════════════
-
-    /// <summary>在图片上绘制棋盘格角点并返回 WPF BitmapSource</summary>
-    private static BitmapSource DrawCornersPreview(string imagePath, Point2f[] corners, Size patternSize)
-    {
-        using var mat = Cv2.ImRead(imagePath, ImreadModes.Color);
-        if (mat.Empty())
-            return null!;
-
-        // 绘制检测到的角点（绿色十字 + 彩色连线）
-        Cv2.DrawChessboardCorners(mat, patternSize, corners, true);
-
-        // Mat → PNG 字节流 → BitmapImage
-        using var ms = new MemoryStream();
-        // OpenCvSharp4 中 ImWrite(string, Stream) 是 Mat 扩展方法，不可用；改用 ImEncode 编码为字节数组写入
-        byte[] pngBytes = mat.ImEncode(".png");
-        ms.Write(pngBytes, 0, pngBytes.Length);
-        ms.Position = 0;
-
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.StreamSource = ms;
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.EndInit();
-        bitmap.Freeze(); // 允许跨线程访问
-        return bitmap;
+            using var preview = _calibrationService.CreatePreview(SelectedImage.ImagePath, SelectedImage.Corners,
+                SelectedImage.ProjectedCorners, ChessboardConfig);
+            PreviewImage = preview.ToBitmapSource();
+            PreviewImage.Freeze();
+            if (CalibrationResult == null || preview.Width != CalibrationResult.ImageWidth || preview.Height != CalibrationResult.ImageHeight)
+                return;
+            using var undistorted = _calibrationService.CreatePreview(SelectedImage.ImagePath, [], [], ChessboardConfig, CalibrationResult);
+            UndistortedImage = undistorted.ToBitmapSource();
+            UndistortedImage.Freeze();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"预览失败：{ex.Message}";
+        }
     }
 }

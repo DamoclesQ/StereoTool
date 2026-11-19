@@ -69,9 +69,8 @@ public partial class DistancePage : Page
         pixelX = (int)((clickPos.X - offsetX) / scale);
         pixelY = (int)((clickPos.Y - offsetY) / scale);
 
-        pixelX = Math.Clamp(pixelX, 0, (int)imgW - 1);
-        pixelY = Math.Clamp(pixelY, 0, (int)imgH - 1);
-        return true;
+        return clickPos.X >= offsetX && clickPos.Y >= offsetY &&
+            clickPos.X < offsetX + renderedW && clickPos.Y < offsetY + renderedH;
     }
 
     /// <summary>
@@ -96,13 +95,17 @@ public partial class DistancePage : Page
 
         // 更新 ViewModel 中的选点坐标
         vm.SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
+        vm.LeftPointIsOriginal = true;
 
         // 同步设置标记点在 Canvas 中的坐标（将图像像素坐标反算回 Canvas 坐标）
         vm.MarkerX = pixelX * scale + offsetX - 7;  // -7 使圆点居中（Ellipse 宽高 14 的一半）
         vm.MarkerY = pixelY * scale + offsetY - 7;
         vm.MarkerVisible = true;
 
-        var (x,y,z) = vm.GetXYZ(pixelX, pixelY);
+        var rectified = vm.RectifyPixel(pixelX, pixelY, true);
+        var (x, y, z) = double.IsFinite(rectified.X) && double.IsFinite(rectified.Y)
+            ? vm.GetXYZ((int)Math.Round(rectified.X), (int)Math.Round(rectified.Y))
+            : (double.NaN, double.NaN, double.NaN);
 
         if (z <= 0 || double.IsNaN(z) || double.IsInfinity(z))
             z = double.NaN;
@@ -131,6 +134,7 @@ public partial class DistancePage : Page
             return;
 
         vm.RightSelectedPoint = new System.Drawing.Point(pixelX, pixelY);
+        vm.RightPointIsOriginal = true;
 
         vm.RightMarkerX = pixelX * scale + offsetX - 7;
         vm.RightMarkerY = pixelY * scale + offsetY - 7;
@@ -155,6 +159,7 @@ public partial class DistancePage : Page
 
         // 更新 ViewModel 中的选点坐标
         vm.SelectedPoint = new System.Drawing.Point(pixelX, pixelY);
+        vm.LeftPointIsOriginal = false;
 
         // 同步设置标记点在 Canvas 中的坐标（将图像像素坐标反算回 Canvas 坐标）
         vm.MarkerX = pixelX * scale + offsetX - 7;  // -7 使圆点居中（Ellipse 宽高 14 的一半）
@@ -183,6 +188,7 @@ public partial class DistancePage : Page
             return;
 
         vm.RightSelectedPoint = new System.Drawing.Point(pixelX, pixelY);
+        vm.RightPointIsOriginal = false;
 
         vm.RightMarkerX = pixelX * scale + offsetX - 7;
         vm.RightMarkerY = pixelY * scale + offsetY - 7;

@@ -51,8 +51,26 @@ public partial class StereoCalibrationParams : ObservableObject
     //  通用字段
     // ═══════════════════════════════════════════════
 
-    /// <summary>左右相机平均重投影误差 RMS（像素），值越小标定越精确</summary>
+    /// <summary>OpenCV StereoCalibrate 返回的全局重投影 RMS（像素）。</summary>
     [ObservableProperty] private double _reprojectionError;
+
+    /// <summary>逐对共同位姿拟合后，全部角点的平均重投影距离（像素）。</summary>
+    public double MeanReprojectionError { get; set; } = double.NaN;
+
+    /// <summary>实际用于标定的图片对数量。</summary>
+    public int ImageCount { get; set; }
+
+    /// <summary>是否使用外部导入的固定内参。</summary>
+    public bool UsedFixedIntrinsics { get; set; }
+
+    /// <summary>联合估计内参时是否估计 k3。</summary>
+    public bool EstimateK3 { get; set; }
+
+    /// <summary>联合估计内参时是否估计切向畸变。</summary>
+    public bool EstimateTangentialDistortion { get; set; }
+
+    /// <summary>双目基线长度（mm）。</summary>
+    public double Baseline => Math.Sqrt(TranslationVector.Sum(value => value * value));
 
     /// <summary>棋盘格内角点列数（宽度方向）</summary>
     [ObservableProperty] private int _cornerCols;
@@ -297,6 +315,7 @@ public partial class StereoCalibrationParams : ObservableObject
     /// <summary>TranslationVector 变化时，通知所有 T 分量派生属性更新</summary>
     partial void OnTranslationVectorChanged(double[] value)
     {
+        OnPropertyChanged(nameof(Baseline));
         OnPropertyChanged(nameof(Tx));
         OnPropertyChanged(nameof(Ty));
         OnPropertyChanged(nameof(Tz));

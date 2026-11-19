@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenCvSharp;
 using OpenCvSharp.WpfExtensions;
+using StereoTool.Utils;
 
 namespace StereoTool.ViewModels;
 
@@ -18,6 +19,15 @@ public partial class DistanceViewModel : ObservableObject
 {
     private readonly CalibrationService _calibrationService;
     private readonly DistanceService _distanceService;
+
+    /// <summary>测距运算期间禁止替换输入。</summary>
+    [ObservableProperty] private bool _isBusy;
+
+    /// <summary>左选点是否来自原始左图。</summary>
+    public bool LeftPointIsOriginal { get; set; }
+
+    /// <summary>右选点是否来自原始右图。</summary>
+    public bool RightPointIsOriginal { get; set; }
 
     /// <summary>标定结果文件路径（用户从磁盘加载的 JSON 文件）</summary>
     [ObservableProperty] private string _calibrationFilePath = string.Empty;
@@ -100,18 +110,27 @@ public partial class DistanceViewModel : ObservableObject
         OnPropertyChanged(nameof(RightFocalMm));
         OnPropertyChanged(nameof(ReprojectionErrorDisplay));
 
-        if(LoadedCalibration != null)
-            StereoRectifyParams = _distanceService.GetRectifyParams(LoadedCalibration);
+        ResetMeasurement();
     }
 
-    partial void OnLeftMatChanged(Mat? value)
+    /// <summary>更新左图并释放旧图，使旧计算结果失效。</summary>
+    /// <param name="oldValue">旧图。</param>
+    /// <param name="newValue">新图。</param>
+    partial void OnLeftMatChanged(Mat? oldValue, Mat? newValue)
     {
+        oldValue?.Dispose();
         LeftImage = LeftMat?.ToWriteableBitmap();
+        ResetMeasurement();
     }
 
-    partial void OnRightMatChanged(Mat? value)
+    /// <summary>更新右图并释放旧图，使旧计算结果失效。</summary>
+    /// <param name="oldValue">旧图。</param>
+    /// <param name="newValue">新图。</param>
+    partial void OnRightMatChanged(Mat? oldValue, Mat? newValue)
     {
+        oldValue?.Dispose();
         RightImage = RightMat?.ToWriteableBitmap();
+        ResetMeasurement();
     }
 
     partial void OnDisparityChanged(Mat? value)
@@ -123,7 +142,8 @@ public partial class DistanceViewModel : ObservableObject
         }
         else
         {
-            DisparityImage = _distanceService.Normlize(value).ToWriteableBitmap();
+            using var normalized = _distanceService.Normlize(value);
+            DisparityImage = normalized.ToWriteableBitmap();
         }      
     }
 
@@ -136,8 +156,10 @@ public partial class DistanceViewModel : ObservableObject
         }
         else
         {
-            var zMat = _distanceService.Split(value).Z;
-            ZImage = _distanceService.GetPseudoColorMat(zMat).ToWriteableBitmap();
+            using var zMat = new Mat();
+            Cv2.ExtractChannel(value, zMat, 2);
+            using var color = _distanceService.GetPseudoColorMat(zMat);
+            ZImage = color.ToWriteableBitmap();
         }
     }
 
@@ -151,6 +173,56 @@ public partial class DistanceViewModel : ObservableObject
     {
         _calibrationService = calibrationService;
         _distanceService = distanceService;
+    }
+
+    /// <summary>清空与旧图片或旧标定参数关联的计算结果。</summary>
+    private void ResetMeasurement()
+    {
+        Disparity?.Dispose();
+        MapXyz?.Dispose();
+        Disparity = null;
+        MapXyz = null;
+        DistanceResult = double.NaN;
+        MarkerVisible = false;
+        RightMarkerVisible = false;
+        LeftPointIsOriginal = false;
+        RightPointIsOriginal = false;
+    }
+
+    /// <summary>接收双目标定页的当前有效结果；失败时保留原有标定参数。</summary>
+    /// <param name="calibration">双目标定结果。</param>
+    /// <param name="source">结果来源显示文本。</param>
+    public void UseCalibration(StereoCalibrationParams calibration, string source = "当前双目标定结果")
+    {
+        if (IsBusy)
+            throw new InvalidOperationException("测距正在计算，请完成后再应用新的标定参数。");
+        var rectify = _distanceService.GetRectifyParams(calibration);
+        StereoRectifyParams?.Dispose();
+        StereoRectifyParams = rectify;
+        LoadedCalibration = calibration;
+        CalibrationFilePath = source;
+        StatusText = "标定参数已应用，请导入左右图片并执行 SGBM 匹配。";
+    }
+
+    /// <summary>将原图像素转换到校正图坐标，避免直接用原图下标查询校正点云。</summary>
+    /// <param name="x">原图像素横坐标。</param>
+    /// <param name="y">原图像素纵坐标。</param>
+    /// <param name="left">是否为左相机。</param>
+    /// <returns>校正后的浮点像素；未加载参数时为 NaN。</returns>
+    public (double X, double Y) RectifyPixel(int x, int y, bool left)
+    {
+        if (StereoRectifyParams == null)
+            return (double.NaN, double.NaN);
+        using var source = new[] { new Point2f(x, y) }.ToMat();
+        using var destination = new Mat();
+        var rectify = StereoRectifyParams;
+        Cv2.UndistortPoints(source, destination,
+            left ? rectify.LeftCameraMatrix : rectify.RightCameraMatrix,
+            left ? rectify.LeftDistCoeffs : rectify.RightDistCoeffs,
+            left ? rectify.LeftR : rectify.RightR,
+            left ? rectify.LeftP : rectify.RightP);
+        var point = destination.At<Point2f>(0);
+        return (point.X, point.Y);
     }
 
 
@@ -172,9 +244,8 @@ public partial class DistanceViewModel : ObservableObject
 
         try
         {
-            LoadedCalibration = _calibrationService.LoadStereoCalibrationParams(dialog.FileName);
-            CalibrationFilePath = dialog.FileName;
-            StatusText = $"标定文件已加载：{Path.GetFileName(dialog.FileName)}（{LoadedCalibration.ImageWidth}×{LoadedCalibration.ImageHeight}）";
+            UseCalibration(_calibrationService.LoadStereoCalibrationParams(dialog.FileName), dialog.FileName);
+            StatusText = $"标定文件已加载：{Path.GetFileName(dialog.FileName)}（{LoadedCalibration!.ImageWidth}×{LoadedCalibration.ImageHeight}）";
         }
         catch (System.Exception ex)
         {
@@ -198,8 +269,15 @@ public partial class DistanceViewModel : ObservableObject
         if (dialog.ShowDialog() != true)
             return;
 
-        LeftMat = new Mat(dialog.FileName, ImreadModes.Unchanged);
-        StatusText = $"左图像已导入：{Path.GetFileName(dialog.FileName)}";
+        try
+        {
+            LeftMat = new Mat(dialog.FileName, ImreadModes.Color);
+            StatusText = $"左图像已导入：{Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"导入失败：{ex.Message}";
+        }
     }
 
     /// <summary>
@@ -218,8 +296,15 @@ public partial class DistanceViewModel : ObservableObject
         if (dialog.ShowDialog() != true)
             return;
 
-        RightMat = new Mat(dialog.FileName, ImreadModes.Unchanged);
-        StatusText = $"右图像已导入：{Path.GetFileName(dialog.FileName)}";
+        try
+        {
+            RightMat = new Mat(dialog.FileName, ImreadModes.Color);
+            StatusText = $"右图像已导入：{Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"导入失败：{ex.Message}";
+        }
     }
 
     /// <summary>
@@ -238,7 +323,12 @@ public partial class DistanceViewModel : ObservableObject
 
         try
         {
-            (Disparity, MapXyz) = _distanceService.SgbmCompute(StereoRectifyParams, LeftMat, RightMat);
+            if (LeftMat.Size() != new Size(LoadedCalibration.ImageWidth, LoadedCalibration.ImageHeight) ||
+                RightMat.Size() != LeftMat.Size())
+                throw new InvalidOperationException("左右图片尺寸必须一致，并与标定图片尺寸相同。");
+            IsBusy = true;
+            ResetMeasurement();
+            (Disparity, MapXyz) = await Task.Run(() => _distanceService.SgbmCompute(StereoRectifyParams, LeftMat, RightMat));
 
             // 将视差图转换为 8 位灰度 BitmapSource 供 UI 显示
             // 视差图是 CV_32F 格式，先归一化到 0-255 再转换为 CV_8U
@@ -255,6 +345,10 @@ public partial class DistanceViewModel : ObservableObject
         catch (System.Exception ex)
         {
             StatusText = $"测量失败：{ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -318,16 +412,31 @@ public partial class DistanceViewModel : ObservableObject
     [RelayCommand]
     private void ManuCompute()
     {
-        if (LoadedCalibration == null)
+        if (StereoRectifyParams == null || !LeftPointIsOriginal || !RightPointIsOriginal)
         {
+            StatusText = "请加载标定参数，并在左右原图分别选择同一个物理点。";
             return;
         }
-        var fx = LoadedCalibration.LeftCameraMatrix[0, 0];
-        var baseline = LoadedCalibration.TranslationVector[0];
-        var d = (SelectedPoint.X - RightSelectedPoint.X) * 1.0;
-        var distance = fx * Math.Abs(baseline) / d;
-
-        StatusText = $"不考虑畸变，不做极线校正：f*b/d = {distance}";
+        try
+        {
+            var left = RectifyPixel(SelectedPoint.X, SelectedPoint.Y, true);
+            var right = RectifyPixel(RightSelectedPoint.X, RightSelectedPoint.Y, false);
+            var disparity = left.X - right.X;
+            if (Math.Abs(left.Y - right.Y) > 2 || disparity <= 0)
+                throw new InvalidOperationException("对应点校正后行差超过 2 px 或视差非正，请重新选点。");
+            using var pixel = new[] { left.X, left.Y, disparity, 1.0 }.ToMat();
+            using var homogeneous = (StereoRectifyParams.Q * pixel).ToMat();
+            var z = homogeneous.At<double>(2) / homogeneous.At<double>(3);
+            if (!double.IsFinite(z) || z <= 0)
+                throw new InvalidOperationException("对应点无法生成有效深度。");
+            DistanceResult = z;
+            StatusText = $"手动对应点：去畸变及校正后视差 {disparity:F3} px，深度 Z = {z:F3} mm。";
+        }
+        catch (Exception ex)
+        {
+            DistanceResult = double.NaN;
+            StatusText = $"手动测距失败：{ex.Message}";
+        }
     }
 
     /// <summary>
@@ -343,6 +452,8 @@ public partial class DistanceViewModel : ObservableObject
             return (double.NaN, double.NaN, double.NaN);
 
         if (pixelX < 0 || pixelX >= MapXyz.Cols || pixelY < 0 || pixelY >= MapXyz.Rows)
+            return (double.NaN, double.NaN, double.NaN);
+        if (!double.IsFinite(GetDisparity(pixelX, pixelY)))
             return (double.NaN, double.NaN, double.NaN);
 
         // CV_32FC3 的每个像素包含 (X, Y, Z) 三个 float 分量

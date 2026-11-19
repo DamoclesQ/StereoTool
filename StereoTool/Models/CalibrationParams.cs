@@ -49,6 +49,18 @@ public partial class CalibrationParams : ObservableObject
     /// <summary>重投影误差 RMS（像素），值越小标定越精确</summary>
     [ObservableProperty] private double _reprojectionError;
 
+    /// <summary>所有参与标定角点的平均重投影距离（像素），区别于 RMS。</summary>
+    public double MeanReprojectionError { get; set; } = double.NaN;
+
+    /// <summary>参与标定的图片数量；旧文件中未记录时为零。</summary>
+    public int ImageCount { get; set; }
+
+    /// <summary>本次标定是否估计 k3。</summary>
+    public bool EstimateK3 { get; set; }
+
+    /// <summary>本次标定是否估计切向畸变。</summary>
+    public bool EstimateTangentialDistortion { get; set; }
+
     /// <summary>标定时间</summary>
     [ObservableProperty] private double _calibrationTime; 
 

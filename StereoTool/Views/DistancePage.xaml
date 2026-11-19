@@ -18,7 +18,7 @@
     </Page.Resources>
 
     <ScrollViewer>
-        <Grid Margin="15">
+        <Grid Margin="15" IsEnabled="{Binding IsBusy, Converter={StaticResource BoolInvertConverter}}">
             <Grid.RowDefinitions>
                 <!--  标定参数加载 + 展示  -->
                 <RowDefinition Height="Auto" />
@@ -1281,9 +1281,9 @@
                                 Height="30"
                                 Margin="2"
                                 Command="{Binding ManuComputeCommand}"
-                                Content="手动计算(f*b/d)"
+                                Content="手动选点测距"
                                 FontSize="12"
-                                ToolTip="不考虑畸变" />
+                                ToolTip="在左右原图选择对应点，去畸变及校正后由 Q 计算深度" />
                     </WrapPanel>
 
                     <!--  距离结果  -->
@@ -1297,7 +1297,7 @@
                                        VerticalAlignment="Center"
                                        FontSize="13"
                                        FontWeight="SemiBold"
-                                       Text="测量结果：" />
+                                       Text="深度 Z：" />
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="16"
                                        FontWeight="Bold"

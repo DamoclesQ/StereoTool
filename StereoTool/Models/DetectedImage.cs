@@ -5,7 +5,7 @@ using System.IO;
 namespace StereoTool.Models;
 
 /// <summary>
-/// 已缓存角点检测结果的单目标定图像。
+/// 单目标定图片记录，保留检测结果、失败诊断与参与选项。
 /// 用于管理单张已完成角点检测的图像，避免标定时重复计算。
 /// 继承 ObservableObject 以支持属性变更通知（DataGrid 绑定需要）。
 /// </summary>
@@ -25,4 +25,28 @@ public partial class DetectedImage : ObservableObject
 
     /// <summary>图像尺寸（像素），从第一张成功检测的图片获取</summary>
     public Size ImageSize { get; set; }
+
+    /// <summary>是否参与下一次标定；排除图片不会删除原始文件。</summary>
+    [ObservableProperty] private bool _isIncluded = true;
+
+    /// <summary>检测诊断，失败图片同样保留在列表中。</summary>
+    [ObservableProperty] private string _detectionStatus = "待检测";
+
+    /// <summary>是否成功检测到完整棋盘格。</summary>
+    public bool IsDetected => Corners.Length > 0;
+
+    /// <summary>该图片全部角点的平均重投影距离，单位为像素。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ErrorBarWidth))]
+    [NotifyPropertyChangedFor(nameof(MeanErrorDisplay))]
+    private double _meanError = double.NaN;
+
+    /// <summary>误差条宽度，100 显示单位对应 1 像素，最大显示 3 像素。</summary>
+    public double ErrorBarWidth => double.IsFinite(MeanError) ? Math.Min(MeanError * 100, 300) : 0;
+
+    /// <summary>尚未标定的记录显示为未知。</summary>
+    public string MeanErrorDisplay => double.IsFinite(MeanError) ? MeanError.ToString("F4") : "--";
+
+    /// <summary>本次拟合的投影点，用于和检测点叠加检查。</summary>
+    public Point2f[] ProjectedCorners { get; set; } = [];
 }

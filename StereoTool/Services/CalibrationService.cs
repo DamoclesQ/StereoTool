@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using OpenCvSharp;
 using StereoTool.Models;
 using StereoTool.Utils;
@@ -6,62 +6,67 @@ using StereoTool.Utils;
 namespace StereoTool.Services;
 
 /// <summary>
-/// 双目相机标定服务，基于 OpenCV 棋盘格标定算法实现。
+/// 单目与双目相机标定服务，基于 OpenCV 棋盘格标定算法实现。
 /// </summary>
-/// <remarks>
-/// 标定流程分五个阶段：
-/// <list type="number">
-///   <item><b>图像分离</b> — 按文件名关键词（left/right）自动区分左右相机图像，失败则按排序后交替分配。</item>
-///   <item><b>角点检测</b> — 对每对图像的左图和右图分别检测棋盘格内角点，并进行亚像素精化。
-///         检测失败的图片对会被静默跳过（记录数量），不中断整体流程。</item>
-///   <item><b>单目标定</b> — 调用 <c>Cv2.CalibrateCamera</c> 分别估计左、右相机的内参矩阵和畸变系数。</item>
-///   <item><b>双目立体标定</b> — 调用 <c>Cv2.StereoCalibrate</c>（FixIntrinsic 模式）求解双目外参 R、T。</item>
-///   <item><b>持久化</b> — 通过 OpenCV <c>FileStorage</c> 将标定结果写入 YAML 文件，支持完整读写往返。</item>
-/// </list>
-/// </remarks>
-public class CalibrationService
+/// <remarks>图片分析和误差预览实现见 CalibrationService.Analysis.cs。</remarks>
+public partial class CalibrationService
 {
     #region 相机标定
 
     /// <summary>
     /// 双目标定
     /// </summary>
-    /// <param name="chessBoard"></param>
-    /// <param name="detectedImagePairs"></param>
-    /// <returns></returns>
-    /// <exception cref="InvalidOperationException"></exception>
-    public StereoCalibrationParams StereoCalibrate(ChessboardConfig chessBoard, IEnumerable<DetectedImagePair> detectedImagePairs)
+    /// <param name="chessBoard">棋盘格及畸变模型配置。</param>
+    /// <param name="detectedImagePairs">参与拟合的有效图片对快照。</param>
+    /// <param name="fixedLeft">可选固定左内参。</param>
+    /// <param name="fixedRight">可选固定右内参，须和左内参同时提供。</param>
+    /// <returns>相机标定参数与质量统计。</returns>
+    /// <exception cref="InvalidOperationException">数据数量、尺寸或角点配置不满足标定条件。</exception>
+    public StereoCalibrationParams StereoCalibrate(ChessboardConfig chessBoard, IEnumerable<DetectedImagePair> detectedImagePairs,
+        CalibrationParams? fixedLeft = null, CalibrationParams? fixedRight = null)
     {
-        if (detectedImagePairs.Count() < 3)
-            throw new InvalidOperationException($"至少需要 3 张有效图片进行单目标定，当前仅 {detectedImagePairs.Count()} 张。");
+        var pairs = detectedImagePairs.ToList();
+        ValidateDataset(chessBoard, pairs.Select(pair => pair.ImageSize),
+            pairs.Select(pair => pair.LeftCorners.Length));
+        if (pairs.Any(pair => pair.RightCorners.Length != chessBoard.CornerCols * chessBoard.CornerRows))
+            throw new InvalidOperationException("右图角点数量与当前配置不同，请重新检测。");
+        if ((fixedLeft == null) != (fixedRight == null))
+            throw new InvalidOperationException("请同时导入左右单目标定文件。");
+        var objectPoints = CreateObjectPoints(chessBoard, pairs.Count);
 
-        var objectPoints = CreateObjectPoints(chessBoard, detectedImagePairs.Count());
+        var leftPoints = pairs.Select(p => p.LeftCorners.ToList()).ToList();
+        var rightPoints = pairs.Select(p => p.RightCorners.ToList()).ToList();
+        var imageSize = pairs[0].ImageSize;
 
-        var leftPoints = detectedImagePairs.Select(p => p.LeftCorners.ToList()).ToList();
-        var rightPoints = detectedImagePairs.Select(p => p.RightCorners.ToList()).ToList();
-        var imageSize = detectedImagePairs.First().ImageSize;
+        if (fixedLeft != null && (fixedLeft.ImageWidth != imageSize.Width || fixedLeft.ImageHeight != imageSize.Height ||
+            fixedRight!.ImageWidth != imageSize.Width || fixedRight.ImageHeight != imageSize.Height))
+            throw new InvalidOperationException("固定内参的图片尺寸与当前数据集不同。");
 
-        var leftCameraMatrix = new double[3, 3];
-        var leftDistCoeffs = new double[5];
-        var rightCameraMatrix = new double[3, 3];
-        var rightDistCoeffs = new double[5];
+        var leftCameraMatrix = fixedLeft == null ? new double[3, 3] : (double[,])fixedLeft.CameraMatrix.Clone();
+        var leftDistCoeffs = fixedLeft == null ? new double[5] : (double[])fixedLeft.DistCoeffs.Clone();
+        var rightCameraMatrix = fixedRight == null ? new double[3, 3] : (double[,])fixedRight.CameraMatrix.Clone();
+        var rightDistCoeffs = fixedRight == null ? new double[5] : (double[])fixedRight.DistCoeffs.Clone();
+        var flags = CalibrationFlags.FixIntrinsic;
+        if (fixedLeft == null)
+        {
+            var modelFlags = GetCalibrationFlags(chessBoard);
+            Cv2.CalibrateCamera(objectPoints, leftPoints, imageSize, leftCameraMatrix, leftDistCoeffs, out _, out _, modelFlags);
+            Cv2.CalibrateCamera(objectPoints, rightPoints, imageSize, rightCameraMatrix, rightDistCoeffs, out _, out _, modelFlags);
+            flags = modelFlags | CalibrationFlags.UseIntrinsicGuess;
+        }
 
-        // 左右相机分别进行单目标定，得到内参矩阵和畸变系数
-        var rms1 = Cv2.CalibrateCamera(objectPoints, leftPoints, imageSize, leftCameraMatrix, leftDistCoeffs, out _, out _);
-        var rms2 = Cv2.CalibrateCamera(objectPoints, rightPoints, imageSize, rightCameraMatrix, rightDistCoeffs, out _, out _);
+        using var R = new Mat();
+        using var T = new Mat();
+        using var E = new Mat();
+        using var F = new Mat();
 
-        var R = new Mat();
-        var T = new Mat();
-        var E = new Mat();
-        var F = new Mat();
-
-        // 双目立体标定，FixIntrinsic 模式：内参矩阵和畸变系数固定不变，仅求解 R、T、E、F
+        // 联合模式优化内外参；固定模式只求解双目外参。
         var rms = Cv2.StereoCalibrate(objectPoints,
             leftPoints, rightPoints, 
             leftCameraMatrix, leftDistCoeffs, 
             rightCameraMatrix, rightDistCoeffs, 
             imageSize,
-            R, T, E, F);
+            R, T, E, F, flags, new TermCriteria(CriteriaTypes.MaxIter | CriteriaTypes.Eps, 100, 1e-6));
 
         var result = new StereoCalibrationParams
         {
@@ -80,36 +85,28 @@ public class CalibrationService
             CornerRows = chessBoard.CornerRows,
             SquareSize = chessBoard.SquareSize,
             PixelSizeUm = chessBoard.PixelSizeUm,
+            ImageCount = pairs.Count,
+            UsedFixedIntrinsics = fixedLeft != null,
+            EstimateK3 = chessBoard.EstimateK3,
+            EstimateTangentialDistortion = chessBoard.EstimateTangentialDistortion,
         };
 
+        UpdateStereoErrors(chessBoard, pairs, result);
         return result;
     }
 
-    /// <summary>
-    /// 从已缓存的角点检测结果执行单目相机标定（仅标定单个相机，不涉及双目外参）。
-    /// </summary>
-    /// <param name="cornersList">每张标定图像已检测的角点坐标列表。</param>
-    /// <param name="config">棋盘格标定板配置参数（内角点数、格子物理尺寸）。</param>
-    /// <param name="imageSize">标定图像的像素尺寸（所有图像必须一致）。</param>
-    /// <param name="progress">进度报告器（0→50→100）。可传 null 忽略。</param>
-    /// <param name="ct">协作取消令牌。</param>
-    /// <returns>
-    /// 包含相机内参矩阵和畸变系数的标定结果。
-    /// 仅填充 LeftCameraMatrix 和 LeftDistCoeffs 字段，
-    /// 右相机和外参相关字段均为空数组。
-    /// </returns>
-    /// <exception cref="InvalidOperationException">
-    /// cornersList 有效数量少于 3 时抛出——单目标定至少需要 3 张有效图片。
-    /// </exception>
+    /// <summary>从有效图片快照执行单目标定，计算每幅图的投影点和平均误差。</summary>
+    /// <param name="chessBoard">棋盘格及畸变配置。</param>
+    /// <param name="detectedImages">参与标定的有效图片快照。</param>
+    /// <returns>内参、畸变和质量统计。</returns>
     public CalibrationParams CameraCalibrate(ChessboardConfig chessBoard, IEnumerable<DetectedImage> detectedImages)
     { 
-        if(detectedImages.Count() < 3)
-            throw new InvalidOperationException($"至少需要 3 张有效图片进行单目标定，当前仅 {detectedImages.Count()} 张。");
+        var images = detectedImages.ToList();
+        ValidateDataset(chessBoard, images.Select(image => image.ImageSize), images.Select(image => image.Corners.Length));
+        var objectPoints = CreateObjectPoints(chessBoard, images.Count);
 
-        var objectPoints = CreateObjectPoints(chessBoard, detectedImages.Count());
-
-        var imagePoints = detectedImages.Select(p=>p.Corners.ToList()).ToList();
-        var imageSize = detectedImages.First().ImageSize;
+        var imagePoints = images.Select(p=>p.Corners.ToList()).ToList();
+        var imageSize = images[0].ImageSize;
 
         var cameraMatrix = new double[3, 3];
         var distCoeffs = new double[5];
@@ -119,8 +116,19 @@ public class CalibrationService
             imageSize, 
             cameraMatrix, 
             distCoeffs, 
-            out _, 
-            out _);
+            out var rotations,
+            out var translations,
+            GetCalibrationFlags(chessBoard));
+
+        for (var i = 0; i < images.Count; i++)
+        {
+            Cv2.ProjectPoints(objectPoints[i],
+                [rotations[i].Item0, rotations[i].Item1, rotations[i].Item2],
+                [translations[i].Item0, translations[i].Item1, translations[i].Item2],
+                cameraMatrix, distCoeffs, out var projected, out _);
+            images[i].ProjectedCorners = projected;
+            images[i].MeanError = GetMeanError(images[i].Corners, projected);
+        }
 
         var result = new CalibrationParams
         {
@@ -133,6 +141,10 @@ public class CalibrationService
             CornerRows = chessBoard.CornerRows,
             SquareSize = chessBoard.SquareSize,
             PixelSizeUm = chessBoard.PixelSizeUm,
+            MeanReprojectionError = images.Average(image => image.MeanError),
+            ImageCount = images.Count,
+            EstimateK3 = chessBoard.EstimateK3,
+            EstimateTangentialDistortion = chessBoard.EstimateTangentialDistortion,
         };
 
         return result;
@@ -143,71 +155,25 @@ public class CalibrationService
 
     #region 角点检测
 
-    /// <summary>
-    /// 对多张图片进行棋盘格角点检测，并进行亚像素精化。
-    /// </summary>
-    /// <param name="imgPaths">图片文件的完整路径数组。</param>
-    /// <param name="config">棋盘格配置参数（内角点列数、行数）。</param>
-    /// <param name="progress">进度报告器（0→N）。可传 null 忽略。</param>
-    /// <returns>包含每张图片检测结果的列表。</returns>
-    public List<DetectedImagePair> DetectImagePairs(IEnumerable<string> leftImgPaths, IEnumerable<string> rightImgPaths, ChessboardConfig config)
+    /// <summary>按名称配对并返回检测成功的图片对；完整诊断使用 AnalyzePairs。</summary>
+    /// <param name="leftImgPaths">左图路径。</param>
+    /// <param name="rightImgPaths">右图路径。</param>
+    /// <param name="config">棋盘格配置。</param>
+    /// <returns>检测成功的图片对。</returns>
+    public List<DetectedImagePair> DetectImagePairs(IEnumerable<string> leftImgPaths,
+        IEnumerable<string> rightImgPaths, ChessboardConfig config)
     {
-        int pairCount = System.Math.Min(leftImgPaths.Count(), rightImgPaths.Count());
-        if (pairCount == 0)
-        {
-            throw new ArgumentException("错误：左右至少各导入 1 张图片才能进行角点检测");
-        }
-
-        var imgResults = new List<DetectedImagePair>();
-
-        for (int i = 0; i < pairCount; i++)
-        {
-            bool okLeft = TryDetectCorners(leftImgPaths.ElementAt(i), config, out var leftCorners, out var leftSize);
-            bool okRight = TryDetectCorners(rightImgPaths.ElementAt(i), config, out var rightCorners, out var rightSize);
-
-            if (okLeft && okRight && leftSize == rightSize)
-            {
-                imgResults.Add(new DetectedImagePair
-                {
-                    LeftPath = leftImgPaths.ElementAt(i),
-                    RightPath = rightImgPaths.ElementAt(i),
-                    LeftCorners = leftCorners,
-                    RightCorners = rightCorners,
-                    ImageSize = leftSize
-                });
-            }
-        }
-
-        return imgResults;
+        return AnalyzePairs(PairImages(leftImgPaths, rightImgPaths), config)
+            .Where(pair => pair.IsDetected).ToList();
     }
 
-    /// <summary>
-    /// 对多张图片进行棋盘格角点检测，并进行亚像素精化。
-    /// </summary>
-    /// <param name="imgPaths">图片文件的完整路径数组。</param>
-    /// <param name="config">棋盘格配置参数（内角点列数、行数）。</param>
-    /// <param name="progress">进度报告器（0→N）。可传 null 忽略。</param>
-    /// <returns>包含每张图片检测结果的列表。</returns>
+    /// <summary>返回检测成功的单目图片；完整诊断使用 AnalyzeImages。</summary>
+    /// <param name="imgPaths">图片路径。</param>
+    /// <param name="config">棋盘格配置。</param>
+    /// <returns>检测成功的图片记录。</returns>
     public List<DetectedImage> DetectImages(IEnumerable<string> imgPaths, ChessboardConfig config)
     {
-        var imgResults = new List<DetectedImage>();
-
-        for (int i = 0; i < imgPaths.Count(); i++)
-        {
-            bool ok = TryDetectCorners(imgPaths.ElementAt(i), config, out var corners, out var size);
-
-            if (ok)
-            {
-                imgResults.Add(new DetectedImage
-                {
-                    ImagePath = imgPaths.ElementAt(i),
-                    Corners = corners,
-                    ImageSize = size
-                });
-            }
-        }
-
-        return imgResults;
+        return AnalyzeImages(imgPaths, config).Where(image => image.IsDetected).ToList();
     }
 
     /// <summary>
@@ -276,6 +242,7 @@ public class CalibrationService
     /// <returns></returns>
     public List<Point3f> CreateWorldPoints(ChessboardConfig config)
     {
+        ValidateConfig(config);
         var singlePattern = new List<Point3f>(config.CornerCols * config.CornerRows);
         for (int row = 0; row < config.CornerRows; row++)
             for (int col = 0; col < config.CornerCols; col++)
@@ -333,7 +300,7 @@ public class CalibrationService
     /// <para>使用 OpenCV <c>FileStorage</c> 的 WRITE 模式写入，格式为标准 YAML 1.0。</para>
     /// <para>写入的关键字段：LeftCameraMatrix、RightCameraMatrix、LeftDistCoeffs、
     /// RightDistCoeffs、RotationMatrix、TranslationVector、ImageWidth、ImageHeight、
-    /// SkippedPairCount、ReprojectionError。</para>
+    /// ReprojectionError，以及平均误差、图片数量和畸变模型选项。</para>
     /// <para>与 <see cref="LoadStereoCalibrationParams"/> 配对使用，保证读写往返一致性。</para>
     /// </remarks>
     public void SaveStereoCalibrationParams(string filePath, StereoCalibrationParams result)
@@ -343,7 +310,7 @@ public class CalibrationService
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             Directory.CreateDirectory(dir);
 
-        // 将 double[][] 转换为 OpenCV Mat，通过 FileStorage 写入 YAML
+        // 将托管数组转换为 OpenCV Mat，通过 FileStorage 写入 YAML
         using var leftCam = result.LeftCameraMatrix.ToMat();
         using var rightCam = result.RightCameraMatrix.ToMat();
         using var leftDist = result.LeftDistCoeffs.ToMat();
@@ -366,6 +333,11 @@ public class CalibrationService
         fs.Write("ImageWidth", result.ImageWidth);
         fs.Write("ImageHeight", result.ImageHeight);
         fs.Write("ReprojectionError", result.ReprojectionError);
+        fs.Write("MeanReprojectionError", result.MeanReprojectionError);
+        fs.Write("ImageCount", result.ImageCount);
+        fs.Write("UsedFixedIntrinsics", result.UsedFixedIntrinsics ? 1 : 0);
+        fs.Write("EstimateK3", result.EstimateK3 ? 1 : 0);
+        fs.Write("EstimateTangentialDistortion", result.EstimateTangentialDistortion ? 1 : 0);
         fs.Write("CornerCols", result.CornerCols);
         fs.Write("CornerRows", result.CornerRows);
         fs.Write("SquareSize", result.SquareSize);
@@ -397,14 +369,14 @@ public class CalibrationService
             throw new InvalidOperationException($"无法打开标定文件: {filePath}");
 
         // 使用索引器按名称读取各 Mat 字段
-        using var leftCam = fs["LeftCameraMatrix"].ReadMat();
-        using var rightCam = fs["RightCameraMatrix"].ReadMat();
-        using var leftDist = fs["LeftDistCoeffs"].ReadMat();
-        using var rightDist = fs["RightDistCoeffs"].ReadMat();
-        using var R = fs["RotationMatrix"].ReadMat();
-        using var T = fs["TranslationVector"].ReadMat();
-        using var E = fs["EssentialMatrix"].ReadMat();
-        using var F = fs["FundamentalMatrix"].ReadMat();
+        using var leftCam = fs["LeftCameraMatrix"]!.ReadMat();
+        using var rightCam = fs["RightCameraMatrix"]!.ReadMat();
+        using var leftDist = fs["LeftDistCoeffs"]!.ReadMat();
+        using var rightDist = fs["RightDistCoeffs"]!.ReadMat();
+        using var R = fs["RotationMatrix"]!.ReadMat();
+        using var T = fs["TranslationVector"]!.ReadMat();
+        using var E = fs["EssentialMatrix"]!.ReadMat();
+        using var F = fs["FundamentalMatrix"]!.ReadMat();
 
         // 将 Mat 转换为 C# 基础类型后立即释放 Mat，避免内存泄漏
         return new StereoCalibrationParams
@@ -417,13 +389,18 @@ public class CalibrationService
             TranslationVector = T.ToDoubleArray(),
             EssentialMatrix = E.ToDouble2D(),
             FundamentalMatrix = F.ToDouble2D(),
-            ImageWidth = fs["ImageWidth"].ReadInt(),
-            ImageHeight = fs["ImageHeight"].ReadInt(),
-            ReprojectionError = fs["ReprojectionError"].ReadDouble(),
-            CornerCols = fs["CornerCols"].ReadInt(),
-            CornerRows = fs["CornerRows"].ReadInt(),
-            SquareSize = fs["SquareSize"].ReadDouble(),
-            PixelSizeUm = fs["PixelSizeUm"].ReadDouble(),
+            ImageWidth = fs["ImageWidth"]!.ReadInt(),
+            ImageHeight = fs["ImageHeight"]!.ReadInt(),
+            ReprojectionError = fs["ReprojectionError"]!.ReadDouble(),
+            MeanReprojectionError = ReadOptionalDouble(fs, "MeanReprojectionError", double.NaN),
+            ImageCount = (int)ReadOptionalDouble(fs, "ImageCount", 0),
+            UsedFixedIntrinsics = ReadOptionalDouble(fs, "UsedFixedIntrinsics", 0) != 0,
+            EstimateK3 = ReadOptionalDouble(fs, "EstimateK3", 1) != 0,
+            EstimateTangentialDistortion = ReadOptionalDouble(fs, "EstimateTangentialDistortion", 1) != 0,
+            CornerCols = fs["CornerCols"]!.ReadInt(),
+            CornerRows = fs["CornerRows"]!.ReadInt(),
+            SquareSize = fs["SquareSize"]!.ReadDouble(),
+            PixelSizeUm = fs["PixelSizeUm"]!.ReadDouble(),
         };
     }
 
@@ -445,6 +422,10 @@ public class CalibrationService
         fs.Write("ImageWidth", result.ImageWidth);
         fs.Write("ImageHeight", result.ImageHeight);
         fs.Write("ReprojectionError", result.ReprojectionError);
+        fs.Write("MeanReprojectionError", result.MeanReprojectionError);
+        fs.Write("ImageCount", result.ImageCount);
+        fs.Write("EstimateK3", result.EstimateK3 ? 1 : 0);
+        fs.Write("EstimateTangentialDistortion", result.EstimateTangentialDistortion ? 1 : 0);
         fs.Write("CornerCols", result.CornerCols);
         fs.Write("CornerRows", result.CornerRows);
         fs.Write("SquareSize", result.SquareSize);
@@ -462,23 +443,41 @@ public class CalibrationService
         using var fs = new FileStorage(filePath, FileStorage.Modes.Read);
         if (!fs.IsOpened())
             throw new InvalidOperationException($"无法打开标定文件: {filePath}");
+        using var cameraNode = fs["CameraMatrix"];
+        if (cameraNode == null || cameraNode.Empty)
+            throw new InvalidOperationException("请选择单目标定 YAML，双目标定文件不能作为单目内参导入。");
 
-        using var camMat = fs["CameraMatrix"].ReadMat();
-        using var distCoeffs = fs["DistCoeffs"].ReadMat();
+        using var camMat = fs["CameraMatrix"]!.ReadMat();
+        using var distCoeffs = fs["DistCoeffs"]!.ReadMat();
 
         return new CalibrationParams
         {
             CameraMatrix = camMat.ToDouble2D(),
             DistCoeffs = distCoeffs.ToDoubleArray(),
-            ImageWidth = fs["ImageWidth"].ReadInt(),
-            ImageHeight = fs["ImageHeight"].ReadInt(),
-            ReprojectionError = fs["ReprojectionError"].ReadDouble(),
-            CornerCols = fs["CornerCols"].ReadInt(),
-            CornerRows = fs["CornerRows"].ReadInt(),
-            SquareSize = fs["SquareSize"].ReadDouble(),
-            PixelSizeUm = fs["PixelSizeUm"].ReadDouble(),
+            ImageWidth = fs["ImageWidth"]!.ReadInt(),
+            ImageHeight = fs["ImageHeight"]!.ReadInt(),
+            ReprojectionError = fs["ReprojectionError"]!.ReadDouble(),
+            MeanReprojectionError = ReadOptionalDouble(fs, "MeanReprojectionError", double.NaN),
+            ImageCount = (int)ReadOptionalDouble(fs, "ImageCount", 0),
+            EstimateK3 = ReadOptionalDouble(fs, "EstimateK3", 1) != 0,
+            EstimateTangentialDistortion = ReadOptionalDouble(fs, "EstimateTangentialDistortion", 1) != 0,
+            CornerCols = fs["CornerCols"]!.ReadInt(),
+            CornerRows = fs["CornerRows"]!.ReadInt(),
+            SquareSize = fs["SquareSize"]!.ReadDouble(),
+            PixelSizeUm = fs["PixelSizeUm"]!.ReadDouble(),
         };
     }
     
     #endregion
+
+    /// <summary>读取可选诊断字段，兼容旧版 YAML。</summary>
+    /// <param name="storage">已打开的文件。</param>
+    /// <param name="name">字段名称。</param>
+    /// <param name="fallback">旧文件缺少字段时的值。</param>
+    /// <returns>读取值或默认值。</returns>
+    private static double ReadOptionalDouble(FileStorage storage, string name, double fallback)
+    {
+        using var node = storage[name];
+        return node == null || node.Empty ? fallback : node.ReadDouble();
+    }
 }

@@ -1,5 +1,8 @@
 ﻿using System.Windows.Controls;
 using StereoTool.ViewModels;
+using System.Windows.Data;
+using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace StereoTool.Views;
 
@@ -17,5 +20,20 @@ public partial class StereoCalibrationPage : Page
     {
         InitializeComponent();
         DataContext = viewModel;
+    }
+
+    /// <summary>左右预览更新后等待布局完成，再适配各自缩放区域。</summary>
+    /// <param name="sender">预览图像控件。</param>
+    /// <param name="e">图像绑定更新事件。</param>
+    private void PreviewImage_TargetUpdated(object sender, DataTransferEventArgs e)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            var parent = VisualTreeHelper.GetParent((Image)sender);
+            while (parent != null && parent is not Xceed.Wpf.Toolkit.Zoombox.Zoombox)
+                parent = VisualTreeHelper.GetParent(parent);
+            if (parent is Xceed.Wpf.Toolkit.Zoombox.Zoombox zoombox)
+                zoombox.FitToBounds();
+        }));
     }
 }

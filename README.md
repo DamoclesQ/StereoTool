@@ -1,133 +1,90 @@
-﻿# 双目相机工具 (StereoTool)
+# StereoTool 双目相机工具
 
-基于 **OpenCV + WPF** 的双目立体视觉桌面应用，提供相机标定与立体测距一体化工作流。
+.NET 10 / WPF / OpenCvSharp 桌面工具，支持棋盘格单目标定、双目标定和离线双目测距。
 
-## ✨ 功能特性
+## 标定操作
 
-| 模块 | 说明 |
-|------|------|
-| **单目标定** | 棋盘格角点亚像素检测 + `CalibrateCamera` 求解内参矩阵与畸变系数 |
-| **双目标定** | `StereoCalibrate` 联合标定，解算双相机外参（R/T/E/F） |
-| **双目测距** | SGBM 半全局立体匹配 → 视差图 → `ReprojectImageTo3D` 生成 XYZ 空间坐标 |
-| **视差图可视化** | 视差图归一化 + 伪彩色渲染（Jet colormap），支持伪彩色开关切换 |
-| **即时测距** | 缓存 XYZ 点云，点击图像任意位置实时读取距离值 |
-| **YAML 持久化** | 标定结果通过 OpenCV `FileStorage` 读写为标准 YAML 格式 |
+参考 MATLAB Camera Calibrator 和 Stereo Camera Calibrator 的操作顺序：
 
-## 🖥️ 界面预览
+**添加并分析 → 检查角点 → 标定 → 评估误差及校正图 → 排除并重新标定 → 导出。**
 
-- 左侧导航面板：**双目测距** / **双目标定** / **单目标定** 三个功能入口
-- 测距页面：TabControl 切换原始双目图像与视差图，支持左右分栏拖拽调整比例
-- 标定页面：棋盘格配置、图片导入、角点检测、标定执行、结果展示
+- [MATLAB 单目标定操作](https://www.mathworks.com/help/vision/ug/using-the-single-camera-calibrator-app.html)
+- [MATLAB 双目标定操作](https://www.mathworks.com/help/vision/ug/using-the-stereo-camera-calibrator-app.html)
 
-## 🛠️ 技术栈
+这里采用 OpenCV 针孔相机和棋盘格算法。参数文件为 OpenCV YAML，不能作为 MATLAB 会话文件使用。
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| .NET | 10.0 (net10.0-windows) | 运行时框架 |
-| WPF | — | 桌面 UI 框架 |
-| [OpenCvSharp4](https://github.com/shimat/opencvsharp) | 4.13.0 | 计算机视觉（标定、SGBM、重投影） |
-| [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) | 8.4.2 | MVVM 架构（命令、消息、IoC） |
-| [Microsoft.Extensions.DependencyInjection](https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection/) | 10.0.9 | 依赖注入容器 |
-| [Extended.Wpf.Toolkit](https://github.com/xceedsoftware/wpftoolkit) | 5.1.2 | WPF 扩展控件 |
-| [Microsoft.Xaml.Behaviors.Wpf](https://github.com/microsoft/XamlBehaviorsWpf) | 1.1.142 | XAML 行为支持 |
+### 单目标定
 
-## 📁 项目结构
+1. 设置棋盘格**内角点**列数、行数，以及每格真实尺寸（mm）。内角点数不是方格数。
+2. 点击“添加图片并分析”，选择一个图片文件夹。可以继续添加其他文件夹；相同路径不会重复添加。
+3. 分析在后台运行，显示处理数量。失败图片保留在列表中并显示原因，不参与求解。
+4. 检查检测点及黄色原点标记，至少选中 3 张有效图片，再点击“标定 / 重新标定”。
+5. 在“误差与筛选”检查逐图误差，在“去畸变检查”检查直线。可取消“参与”，或按阈值排除高误差图片，然后重新标定。
+6. 确认后导出 YAML。重新勾选可恢复被排除的图片；“移除”仅移除数据集记录，不删除原图。
 
-```
-StereoTool/
-├── Models/                     # 数据模型
-│   ├── CalibrationParams.cs        # 单目标定结果
-│   ├── StereoCalibrationParams.cs  # 双目标定结果
-│   ├── StereoRectifyResult.cs      # 双目校正参数（remap 映射 + Q 矩阵）
-│   ├── ChessboardConfig.cs         # 棋盘格标定板配置
-│   ├── DetectedImage.cs            # 单图角点检测结果
-│   └── DetectedImagePair.cs        # 图像对角点检测结果
-├── Services/                   # 业务逻辑
-│   ├── CalibrationService.cs       # 标定服务（角点检测 / 单目&双目标定 / YAML读写）
-│   └── DistanceService.cs          # 测距服务（SGBM立体匹配 / 视差图生成 / XYZ计算）
-├── ViewModels/                 # MVVM ViewModel 层
-│   ├── MainViewModel.cs            # 主窗口导航状态
-│   ├── CalibrationViewModel.cs     # 单目标定页面逻辑
-│   ├── StereoCalibrationViewModel.cs # 双目标定页面逻辑
-│   └── DistanceViewModel.cs        # 测距页面逻辑（视差图显示 / 伪彩色 / 点击测距）
-├── Views/                      # WPF 页面
-│   ├── MainWindow.xaml             # 主窗口（侧边导航 + Frame 内容区）
-│   ├── CalibrationPage.xaml        # 单目标定页
-│   ├── StereoCalibrationPage.xaml  # 双目标定页
-│   └── DistancePage.xaml           # 测距页（双目图像 / 视差图 Tab 切换）
-├── Helpers/                    # 值转换器等辅助类
-├── Utils/                      # 工具类（Mat ↔ double[] 转换）
-├── Resources/                  # 字体、图片等静态资源
-├── App.xaml.cs                 # 应用入口（DI 容器配置）
-└── StereoTool.csproj           # 项目文件
-```
+建议采集 10～20 张图片，覆盖画面不同位置和多种倾角。当前针孔模型默认估计 k1、k2，可选择估计 k3 和切向畸变 p1、p2；不估计非零轴倾斜系数。
 
-## 📖 使用说明
+### 双目标定
 
-### 1. 相机标定
+1. 点击“添加图片对并分析”，依次选择左右图片文件夹。
+2. 文件按名称配对：支持双目录同名图片、left01/right01、left_01/right_01。数字前导零被忽略。缺少对应图的记录会保留，重复编号歧义会报错，不使用错位顺序配对。
+3. 检查左右图检测点，尤其确认黄色原点和棋盘格点的对应关系。
+4. 选择内参方式：
+   - 默认联合估计左右内参与双目外参。
+   - 勾选“使用固定内参”，导入左右两份单目标定 YAML。该模式保持内参和畸变不变，仅求双目外参。图片尺寸必须与内参文件一致。
+5. 标定后检查逐对重投影误差和双目校正预览。校正图的对应点应位于同一水平线上。
+6. 排除问题图片对后重新标定，再导出 YAML，或点击“用于测距”直接传入测距页。
 
-1. 进入**双目标定**（或**单目标定**）页面
-2. 配置棋盘格参数（内角点列数/行数、格子物理尺寸）
-3. 导入左右相机拍摄的棋盘格图片
-4. 点击**角点检测**，系统自动识别并精化棋盘格角点
-5. 点击**执行标定**，系统依次完成：
-   - 单目标定 → 获得内参矩阵和畸变系数
-   - （双目标定）立体标定 → 获得外参 R/T/E/F
-6. 标定结果可**保存为 YAML** 文件，下次启动直接加载
+单目使用 CalibrateCamera 的逐图位姿计算误差。双目固定已求出的相机参数，再为每对图片拟合一个共同棋盘格位姿，计算左右重投影误差；不会用两个独立棋盘格位姿掩盖配对错误。
 
-### 2. 双目测距
+### 结果与状态
 
-1. 加载已标定好的 YAML 参数文件
-2. 加载左右相机拍摄的待测图像对
-3. 系统自动执行：
-   - `Remap` 立体校正
-   - `StereoSGBM` 视差计算
-   - `ReprojectImageTo3D` 生成 XYZ 空间坐标
-4. 在左图（或视差图）上**点击任意像素点**，右侧显示该点的三维坐标和距离
-5. 支持**伪彩色开关**：视差图可在灰度/彩色之间切换
+- 平均误差：检测点与投影点的二维欧氏距离均值，单位 px。
+- RMS：OpenCV 标定返回的全局均方根重投影误差，与平均误差分开展示。
+- 误差条最大显示 3 px，数值仍显示实际值。
+- 改变参与图片、格子尺寸或畸变模型后，旧参数立即失效，需重新标定。
+- 改变内角点行列数后，保留图片并清空检测缓存，需重新分析。
+- 排除图片后保留上一轮误差，便于继续筛选；重新标定后更新。
+- 加载参数仅用于查看、校正和测距，不恢复原始图片会话；旧文件没有记录的误差均值显示为未知。
+- OpenCV 标定求解期间界面仍可响应。“停止图片分析”在当前图片检测完成后生效，不中断底层标定求解。
 
-## 📐 核心算法流程
+## 双目测距
 
-```
-┌──────────────┐    ┌──────────────┐
-│   Left Image │    │  Right Image │
-└──────┬───────┘    └──────┬───────┘
-       │                   │
-       ▼                   ▼
-  ┌─────────┐         ┌─────────┐
-  │  Remap  │         │  Remap  │    ← 立体校正（StereoRectify）
-  └────┬────┘         └────┬────┘
-       │                   │
-       └────────┬──────────┘
-                ▼
-        ┌──────────────┐
-        │  StereoSGBM  │              ← 半全局立体匹配
-        └──────┬───────┘
-               ▼
-        ┌──────────────┐
-        │  Disparity   │              ← 视差图 (CV_32F)
-        └──────┬───────┘
-               ▼
-        ┌──────────────┐
-        │ ReprojectTo3D│              ← Q 矩阵重投影
-        └──────┬───────┘
-               ▼
-        ┌──────────────┐
-        │   XYZ Map    │              ← 空间坐标缓存
-        └──────┬───────┘
-               ▼
-        ┌──────────────┐
-        │ Click → Dist │              ← 点击即得距离
-        └──────────────┘
-```
+1. 加载双目标定 YAML，或从双目标定页点击“用于测距”。
+2. 导入左右图片，尺寸必须相同且与标定图片一致。
+3. 点击“SGBM匹配”：立体校正 → 视差 → Q 矩阵重投影 → XYZ。
+4. 点击左原图时，先把原图像素转换到校正坐标再查询 XYZ；深度伪彩图直接查询校正坐标。
+5. “手动选点测距”需要在左右原图选取同一个物理点。程序先去畸变与校正，检查行差和正视差，再用 Q 计算深度。
+6. 保存视差和 XYZ 为浮点 TIFF。XYZ TIFF 是三通道坐标图。
 
-## 🏗️ 架构设计
+测量值为校正左相机坐标系下的 **Z 深度（mm）**。更换图片或标定参数后，旧视差、XYZ 和测量值会清空。
 
-- **MVVM 模式**：View ↔ ViewModel ↔ Service，数据绑定驱动 UI 更新
-- **DI 容器**：`Microsoft.Extensions.DependencyInjection` 统一管理依赖，Service 以 Singleton 注册
-- **CommunityToolkit.Mvvm**：`[ObservableProperty]` / `[RelayCommand]` 减少样板代码
-- **标定-测距解耦**：标定参数通过 YAML 文件传递，`StereoRectifyResult` 缓存校正映射避免重复计算
+## 示例数据
 
----
+资料/calImage/left 和 right 中有棋盘格图片。使用这些图片时设置内角点 **9 × 6**、格子尺寸 **40 mm**，与应用初始格子尺寸 20 mm 区分。
 
-> 💡 标定用棋盘格图片示例位于 `资料/calImage/` 目录下。
+标定平移和重建坐标的单位由格子尺寸决定；输入 mm 才输出 mm。像元尺寸只用于显示物理焦距。
+
+## 项目结构
+
+- App.xaml.cs / MainWindow：依赖注入、启动和导航。
+- Models：棋盘格、检测记录、相机参数及校正映射。
+- ViewModels：单目、双目和测距工作流。
+- Services/CalibrationService.cs：标定及 YAML 读写。
+- Services/CalibrationService.Analysis.cs：图片配对、分析、误差拟合及预览。
+- Services/DistanceService.cs：立体校正、SGBM 和三维重建。
+- Views：WPF 页面，支持 Ctrl+滚轮缩放。
+- Utils/CvConvert.cs：C# 数组和 OpenCV Mat 转换。
+
+页面与 ViewModel 均为 Singleton，切换页面保留当前数据。
+
+## 构建与验证
+
+在仓库根目录执行：
+
+~~~powershell
+dotnet build StereoTool/StereoTool.csproj
+dotnet run --project tests/CalibrationWorkflowProbe/CalibrationWorkflowProbe.csproj -- .
+~~~
+
+验证程序使用仓库图片及合成几何，检查配对、失败诊断、单目/双目求解、固定内参、YAML 兼容、误差筛选状态、后台调度、坐标转换与 SGBM。页面离屏预览和验证 YAML 写入 .tmp/calibration-verification，不覆盖示例文件。

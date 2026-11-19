@@ -33,11 +33,16 @@ public class DistanceService : IDisposable
 
         var color = new Mat();
 
-        // 将32F归一化到0~255
-        Cv2.Normalize(mat32F, gray8, 0, 255, NormTypes.MinMax, (int)MatType.CV_8UC1);
+        // 只用有效正深度确定色阶，缺失视差不参与归一化。
+        using var valid = new Mat();
+        Cv2.InRange(mat32F, new Scalar(0.000001), new Scalar(float.MaxValue), valid);
+        Cv2.Normalize(mat32F, gray8, 0, 255, NormTypes.MinMax, (int)MatType.CV_8UC1, valid);
 
         // 转为伪彩
         Cv2.ApplyColorMap(gray8, color, ColormapTypes.Jet);
+        using var invalid = new Mat();
+        Cv2.BitwiseNot(valid, invalid);
+        color.SetTo(Scalar.Black, invalid);
 
         return color;
     }
@@ -102,6 +107,9 @@ public class DistanceService : IDisposable
 
         var xyz = new Mat();
         Cv2.ReprojectImageTo3D(disparity32F, xyz, stereoRectifyParams.Q);
+        using var invalid = new Mat();
+        Cv2.Compare(disparity32F, 0, invalid, CmpTypes.LE);
+        xyz.SetTo(new Scalar(double.NaN, double.NaN, double.NaN), invalid);
 
         return (disparity32F, xyz);
     }

@@ -50,7 +50,7 @@ public partial class App : Application
         // ── 注册 ViewModel ──
         // MainViewModel 为 Singleton（导航状态需要全局保持）
         services.AddSingleton<MainViewModel>();
-        // 页面 ViewModel 为 Transient（每次导航获得新实例，适合页面间独立状态）
+        // 页面与 ViewModel 共享生命周期，切换页面后保留当前工作状态。
         services.AddSingleton<StereoCalibrationViewModel>();
         services.AddSingleton<DistanceViewModel>();
         services.AddSingleton<CalibrationViewModel>();
