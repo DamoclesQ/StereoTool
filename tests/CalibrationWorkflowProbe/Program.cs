@@ -8,9 +8,10 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using OpenCvSharp;
 using StereoTool;
-using StereoTool.Models;
+using StereoTool.Calibration.Models;
+using StereoTool.Calibration.Services;
 using StereoTool.Services;
-using StereoTool.Utils;
+using StereoTool.Calibration.Utils;
 using StereoTool.ViewModels;
 using StereoTool.Views;
 

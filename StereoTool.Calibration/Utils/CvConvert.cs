@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using OpenCvSharp;
 
-namespace StereoTool.Utils;
+namespace StereoTool.Calibration.Utils;
 
 /// <summary>
 /// C# 常规数据类型与 OpenCV Mat 之间的高性能互转工具类。

@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../StereoTool/StereoTool.csproj" />
+    <ProjectReference Include="../../StereoTool.Calibration/StereoTool.Calibration.csproj" />
   </ItemGroup>
 </Project>

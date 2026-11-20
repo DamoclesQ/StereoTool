@@ -1,8 +1,8 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using OpenCvSharp;
 using System.IO;
 
-namespace StereoTool.Models;
+namespace StereoTool.Calibration.Models;
 
 /// <summary>
 /// 单目标定图片记录，保留检测结果、失败诊断与参与选项。

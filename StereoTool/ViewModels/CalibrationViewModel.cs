@@ -7,8 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenCvSharp.WpfExtensions;
-using StereoTool.Models;
-using StereoTool.Services;
+using StereoTool.Calibration.Models;
+using StereoTool.Calibration.Services;
 
 namespace StereoTool.ViewModels;
 

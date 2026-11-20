@@ -1,7 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using OpenCvSharp;
 
-namespace StereoTool.Models;
+namespace StereoTool.Calibration.Models;
 
 /// <summary>
 /// 双目标定参数模型。

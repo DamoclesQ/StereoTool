@@ -1,10 +1,10 @@
 using System.IO;
 using System.Text.RegularExpressions;
 using OpenCvSharp;
-using StereoTool.Models;
-using StereoTool.Utils;
+using StereoTool.Calibration.Models;
+using StereoTool.Calibration.Utils;
 
-namespace StereoTool.Services;
+namespace StereoTool.Calibration.Services;
 
 /// <summary>标定服务中的图片分析、误差计算与预览功能。</summary>
 public partial class CalibrationService

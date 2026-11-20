@@ -1,9 +1,9 @@
 using System.IO;
 using OpenCvSharp;
-using StereoTool.Models;
-using StereoTool.Utils;
+using StereoTool.Calibration.Models;
+using StereoTool.Calibration.Utils;
 
-namespace StereoTool.Services;
+namespace StereoTool.Calibration.Services;
 
 /// <summary>
 /// 单目与双目相机标定服务，基于 OpenCV 棋盘格标定算法实现。

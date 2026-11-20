@@ -1,6 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace StereoTool.Models;
+namespace StereoTool.Calibration.Models;
 
 /// <summary>
 /// 棋盘格标定板配置参数

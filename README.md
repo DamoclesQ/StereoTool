@@ -10,7 +10,7 @@
 - 已有图片时启用角点分析，至少 3 张/对分析成功且参与的样本才能标定。分析和求解期间锁定输入，角点分析支持取消。
 - 测距页将原图、立体校正检查、视差与深度、完整标定参数分为标签；右侧集中显示 XYZ、对应点、输入摘要和数据导出。参数和左右图齐全后启用 SGBM，左右原图对应点齐全后启用手动测距。
 
-运行职责：MainViewModel 只维护导航选择和发送请求，MainWindow 负责取得页面；三个工作流 ViewModel 管理输入、后台运算、结果失效和显示状态；CalibrationService / DistanceService 执行图像处理与计算。图片数据集和参与勾选发生变化时，界面同步更新剩余数量、误差统计和操作提示。
+运行职责：MainViewModel 只维护导航选择和发送请求，MainWindow 负责取得页面；三个工作流 ViewModel 管理输入、后台运算、结果失效和显示状态；独立类库中的 CalibrationService 执行标定，界面项目中的 DistanceService 执行立体校正与测距。图片数据集和参与勾选发生变化时，界面同步更新剩余数量、误差统计和操作提示。
 
 ## 标定操作
 
@@ -81,24 +81,61 @@
 
 ## 项目结构
 
-- App.xaml.cs / MainWindow：依赖注入、启动和导航。
-- Models：棋盘格、检测记录、相机参数及校正映射。
-- ViewModels：单目、双目和测距工作流。
-- Services/CalibrationService.cs：标定及 YAML 读写。
-- Services/CalibrationService.Analysis.cs：图片配对、分析、误差拟合及预览。
-- Services/DistanceService.cs：立体校正、SGBM 和三维重建。
-- Views：WPF 页面，支持 Ctrl+滚轮缩放。
-- Utils/CvConvert.cs：C# 数组和 OpenCV Mat 转换。
+- StereoTool.Calibration：独立的 .NET 10 标定服务类库，不引用 WPF 或界面项目。
+- StereoTool.Calibration/Services/CalibrationService.cs：单目/双目标定及 YAML 读写。
+- StereoTool.Calibration/Services/CalibrationService.Analysis.cs：图片配对、角点分析、误差拟合及 Mat 预览。
+- StereoTool.Calibration/Models：棋盘格配置、检测记录和单目/双目标定参数。沿用现有可观察模型，保留属性变更通知，不依赖 WPF。
+- StereoTool.Calibration/Utils/CvConvert.cs：C# 数组和 OpenCV Mat 转换。
+- StereoTool/App.xaml.cs / MainWindow：依赖注入、启动和导航，通过项目引用调用标定服务。
+- StereoTool/ViewModels / Views：单目、双目和测距工作流及 WPF 页面，支持 Ctrl+滚轮缩放。
+- StereoTool/Services/DistanceService.cs：立体校正、SGBM 和三维重建。
+- StereoTool/Models/StereoRectifyResult.cs：测距使用的校正矩阵和映射。
 
 页面与 ViewModel 均为 Singleton，切换页面保留当前数据。
+
+## 在其他项目调用标定服务
+
+引用 StereoTool.Calibration/StereoTool.Calibration.csproj 后，可直接创建现有服务类：
+
+~~~csharp
+using StereoTool.Calibration.Models;
+using StereoTool.Calibration.Services;
+
+var service = new CalibrationService();
+var config = new ChessboardConfig
+{
+    CornerCols = 9,
+    CornerRows = 6,
+    SquareSize = 40
+};
+var leftPaths = service.GetImagePaths(leftFolder);
+var rightPaths = service.GetImagePaths(rightFolder);
+
+var images = service.AnalyzeImages(leftPaths, config);
+var mono = service.CameraCalibrate(config,
+    images.Where(image => image.IsDetected && image.IsIncluded));
+service.SaveCalibrationParams(monoFilePath, mono);
+
+var pairs = service.AnalyzePairs(service.PairImages(leftPaths, rightPaths), config);
+var stereo = service.StereoCalibrate(config,
+    pairs.Where(pair => pair.IsDetected && pair.IsIncluded));
+service.SaveStereoCalibrationParams(stereoFilePath, stereo);
+~~~
+
+示例中的文件夹和输出文件路径由调用方提供。分析方法支持 IProgress 和 CancellationToken；标定方法为同步计算，后台调度和异常处理由调用方负责。固定内参模式通过 StereoCalibrate 的 fixedLeft、fixedRight 参数传入两份单目结果。
+
+服务返回现有标定模型和 OpenCV Mat；预览 Mat 由调用方释放，WPF 图像转换留在界面项目。类库使用 OpenCvSharp4 和 CommunityToolkit.Mvvm；OpenCV 本机运行库由宿主提供，当前 WPF 应用和控制台验证项目已引用 OpenCvSharp4.runtime.win。YAML 字段与原版本兼容。
 
 ## 构建与验证
 
 在仓库根目录执行：
 
 ~~~powershell
-dotnet build StereoTool/StereoTool.csproj
+dotnet build StereoTool.slnx
+dotnet run --project tests/CalibrationServiceProbe/CalibrationServiceProbe.csproj -- .
 dotnet run --project tests/CalibrationWorkflowProbe/CalibrationWorkflowProbe.csproj -- .
 ~~~
 
-验证程序使用仓库图片及合成几何，检查配对、失败诊断、单目/双目求解、固定内参、YAML 兼容、误差筛选状态、后台调度、坐标转换与 SGBM。页面离屏预览和验证 YAML 写入 .tmp/calibration-verification，不覆盖示例文件。
+CalibrationServiceProbe 是仅引用标定类库的 .NET 10 控制台程序，不启用 WPF，使用真实图片验证独立调用及 YAML 往返，结果写入 .tmp/calibration-service-verification。
+
+CalibrationWorkflowProbe 使用仓库图片及合成几何，检查配对、失败诊断、单目/双目求解、固定内参、YAML 兼容、误差筛选状态、后台调度、坐标转换与 SGBM。页面离屏预览和验证 YAML 写入 .tmp/calibration-verification，不覆盖示例文件。

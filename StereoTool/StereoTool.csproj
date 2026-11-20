@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../StereoTool.Calibration/StereoTool.Calibration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Extended.Wpf.Toolkit" Version="5.1.2" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
     <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />

@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="StereoTool.Calibration/StereoTool.Calibration.csproj" />
   <Project Path="StereoTool/StereoTool.csproj" />
 </Solution>
