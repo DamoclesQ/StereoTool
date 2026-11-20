@@ -186,6 +186,16 @@ public partial class CalibrationService
             Math.Sqrt(Math.Pow(point.X - projected[i].X, 2) + Math.Pow(point.Y - projected[i].Y, 2))).Average();
     }
 
+    /// <summary>计算所有角点重投影距离中的最大值。</summary>
+    /// <param name="observed">检测点。</param>
+    /// <param name="projected">模型投影点。</param>
+    /// <returns>最大欧氏距离，单位为像素。</returns>
+    private static double GetMaxError(Point2f[] observed, Point2f[] projected)
+    {
+        return observed.Select((point, i) =>
+            Math.Sqrt(Math.Pow(point.X - projected[i].X, 2) + Math.Pow(point.Y - projected[i].Y, 2))).Max();
+    }
+
     /// <summary>拟合每对图片的共同棋盘格位姿后更新逐对误差。</summary>
     /// <param name="config">棋盘格配置。</param>
     /// <param name="pairs">参与标定的图片对快照。</param>
@@ -201,6 +211,9 @@ public partial class CalibrationService
             pair.LeftMeanError = GetMeanError(pair.LeftCorners, projected.Left);
             pair.RightMeanError = GetMeanError(pair.RightCorners, projected.Right);
             pair.MeanError = (pair.LeftMeanError + pair.RightMeanError) / 2;
+            pair.MaxError = Math.Max(
+                GetMaxError(pair.LeftCorners, projected.Left),
+                GetMaxError(pair.RightCorners, projected.Right));
         }
         calib.MeanReprojectionError = pairs.Average(pair => pair.MeanError);
     }

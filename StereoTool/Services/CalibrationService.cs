@@ -128,6 +128,7 @@ public partial class CalibrationService
                 cameraMatrix, distCoeffs, out var projected, out _);
             images[i].ProjectedCorners = projected;
             images[i].MeanError = GetMeanError(images[i].Corners, projected);
+            images[i].MaxError = GetMaxError(images[i].Corners, projected);
         }
 
         var result = new CalibrationParams

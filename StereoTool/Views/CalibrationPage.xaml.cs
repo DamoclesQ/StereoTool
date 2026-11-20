@@ -7,7 +7,7 @@ using System.Windows.Threading;
 namespace StereoTool.Views;
 
 /// <summary>
-/// 单目标定页面。通过 DataContext 绑定 MonoCalibrationViewModel，
+/// 单目标定页面。通过 DataContext 绑定 CalibrationViewModel，
 /// 提供棋盘格配置、图片导入、角点检测、标定执行及结果保存的 UI 交互。
 /// </summary>
 public partial class CalibrationPage : Page

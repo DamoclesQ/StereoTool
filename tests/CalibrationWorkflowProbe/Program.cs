@@ -22,7 +22,9 @@ var thread = new Thread(() =>
 {
     try
     {
-        if (args.Contains("--ui"))
+        if (args.Contains("--error-filter"))
+            RunErrorFilterChecks(workspace);
+        else if (args.Contains("--ui"))
             RunUiSmoke(workspace, output);
         else
             RunChecks(workspace, output);
@@ -41,6 +43,116 @@ if (failure != null)
     return 1;
 }
 return 0;
+
+/// <summary>验证最大误差与列表口径一致，并随排除、恢复和重新计算立即更新。</summary>
+/// <param name="workspace">包含标定样例的仓库根目录。</param>
+static void RunErrorFilterChecks(string workspace)
+{
+    if (Application.Current == null)
+    {
+        var app = new App();
+        app.InitializeComponent();
+    }
+    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+    var service = new CalibrationService();
+    var data = Path.Combine(workspace, "资料", "calImage");
+    var leftPaths = service.GetImagePaths(Path.Combine(data, "left")).Take(3).ToList();
+    var rightPaths = service.GetImagePaths(Path.Combine(data, "right")).Take(3).ToList();
+    var mono = new CalibrationViewModel(service);
+    mono.DetectedImages = new System.Collections.ObjectModel.ObservableCollection<DetectedImage>(
+        leftPaths.Select(path => new DetectedImage { ImagePath = path }));
+    PumpUntil(mono.DetectCornersCommand.ExecuteAsync(null));
+    Check(mono.DetectedImages.All(image => image.IsDetected), "单目筛选样本检测成功");
+    double[] means = [0.2, 0.8, 1.4];
+    double[] cornerMaxima = [30, 9, 4];
+    for (var i = 0; i < 3; i++)
+    {
+        mono.DetectedImages[i].MeanError = means[i];
+        mono.DetectedImages[i].MaxError = cornerMaxima[i];
+    }
+    Check(mono.RemainingMaxErrorDisplay == "1.4000", "单目最大误差取列表均值，不取角点最大值");
+    var monoUpdates = 0;
+    var monoCountUpdates = 0;
+    mono.PropertyChanged += (_, e) =>
+    {
+        if (e.PropertyName == nameof(CalibrationViewModel.RemainingMaxErrorDisplay))
+            monoUpdates++;
+        if (e.PropertyName == nameof(CalibrationViewModel.RemainingCount))
+            monoCountUpdates++;
+    };
+    mono.ErrorThreshold = 1;
+    mono.ExcludeHighErrorCommand.Execute(null);
+    Check(!mono.DetectedImages[2].IsIncluded && mono.RemainingMaxErrorDisplay == "0.8000" && monoUpdates > 0,
+        "单目排除高误差图片后通知界面并显示剩余最大列表误差");
+    Check(mono.RemainingCount == 2 && monoCountUpdates > 0, "单目排除后剩余数量更新并通知界面");
+    mono.RestoreSelectAllCommand.Execute(null);
+    Check(mono.RemainingMaxErrorDisplay == "1.4000" && mono.RemainingCount == 3,
+        "单目恢复全选后同步恢复剩余数量和最大误差");
+    mono.DetectedImages[2].MeanError = 0.4;
+    Check(mono.RemainingMaxErrorDisplay == "0.8000", "单目拟合误差更新后刷新最大值");
+    mono.SelectedImage = mono.DetectedImages[0];
+    Check(mono.RemainingMaxErrorDisplay == "0.8000", "切换当前图片不改变参与图片的最大误差");
+    foreach (var image in mono.DetectedImages)
+        image.IsIncluded = false;
+    Check(mono.RemainingMaxErrorDisplay == "--" && mono.RemainingCount == 0,
+        "单目全部取消后剩余数量为零且误差未知");
+    var failedImage = new DetectedImage
+    {
+        DetectionStatus = "未检测到完整棋盘格",
+        IsIncluded = false
+    };
+    mono.DetectedImages.Add(failedImage);
+    mono.RestoreSelectAllCommand.Execute(null);
+    Check(mono.RemainingCount == 3 && !failedImage.IsIncluded, "单目恢复全选跳过检测失败记录");
+
+    using var provider = new ServiceCollection().BuildServiceProvider();
+    var distanceService = new DistanceService();
+    var stereo = new StereoCalibrationViewModel(service, distanceService,
+        new DistanceViewModel(service, distanceService), new MainViewModel());
+    stereo.ImagePairs = new System.Collections.ObjectModel.ObservableCollection<DetectedImagePair>(
+        service.PairImages(leftPaths, rightPaths));
+    PumpUntil(stereo.DetectCornersCommand.ExecuteAsync(null));
+    Check(stereo.ImagePairs.All(pair => pair.IsDetected), "双目筛选样本检测成功");
+    for (var i = 0; i < 3; i++)
+    {
+        stereo.ImagePairs[i].MeanError = means[i];
+        stereo.ImagePairs[i].MaxError = cornerMaxima[i];
+    }
+    Check(stereo.RemainingMaxErrorDisplay == "1.4000", "双目最大误差取列表均值，不取角点最大值");
+    var stereoUpdates = 0;
+    var stereoCountUpdates = 0;
+    stereo.PropertyChanged += (_, e) =>
+    {
+        if (e.PropertyName == nameof(StereoCalibrationViewModel.RemainingMaxErrorDisplay))
+            stereoUpdates++;
+        if (e.PropertyName == nameof(StereoCalibrationViewModel.RemainingCount))
+            stereoCountUpdates++;
+    };
+    stereo.ErrorThreshold = 1;
+    stereo.ExcludeHighErrorCommand.Execute(null);
+    Check(!stereo.ImagePairs[2].IsIncluded && stereo.RemainingMaxErrorDisplay == "0.8000" && stereoUpdates > 0,
+        "双目排除高误差图片对后通知界面并显示剩余最大列表误差");
+    Check(stereo.RemainingCount == 2 && stereoCountUpdates > 0, "双目排除后剩余对数更新并通知界面");
+    stereo.RestoreSelectAllCommand.Execute(null);
+    Check(stereo.RemainingMaxErrorDisplay == "1.4000" && stereo.RemainingCount == 3,
+        "双目恢复全选后同步恢复剩余对数和最大误差");
+    stereo.ImagePairs[2].MeanError = 0.4;
+    Check(stereo.RemainingMaxErrorDisplay == "0.8000", "双目拟合误差更新后刷新最大值");
+    stereo.SelectedPair = stereo.ImagePairs[0];
+    Check(stereo.RemainingMaxErrorDisplay == "0.8000", "切换当前图片对不改变参与图片对的最大误差");
+    foreach (var pair in stereo.ImagePairs)
+        pair.IsIncluded = false;
+    Check(stereo.RemainingMaxErrorDisplay == "--" && stereo.RemainingCount == 0,
+        "双目全部取消后剩余对数为零且误差未知");
+    var missingPair = new DetectedImagePair
+    {
+        DetectionStatus = "缺少对应图",
+        IsIncluded = false
+    };
+    stereo.ImagePairs.Add(missingPair);
+    stereo.RestoreSelectAllCommand.Execute(null);
+    Check(stereo.RemainingCount == 3 && !missingPair.IsIncluded, "双目恢复全选跳过缺图或检测失败记录");
+}
 
 /// <summary>运行真实图片、合成几何及 WPF 页面状态检查。</summary>
 /// <param name="workspace">仓库根目录。</param>
@@ -91,7 +203,10 @@ static void RunChecks(string workspace, string output)
     var loadedStereo = service.LoadStereoCalibrationParams(Path.Combine(output, "stereo.yaml"));
     Check(loadedStereo.ImageCount == pairs.Count && Math.Abs(loadedStereo.Baseline - stereo.Baseline) < 1e-8,
         "双目 YAML 往返一致");
-    var legacy = service.LoadStereoCalibrationParams(Path.Combine(data, "stereoCalibrationParams.yaml"));
+    var legacyPath = Path.Combine(output, "stereo-legacy.yaml");
+    File.WriteAllLines(legacyPath, File.ReadAllLines(Path.Combine(output, "stereo.yaml"))
+        .Where(line => !line.StartsWith("MeanReprojectionError:")));
+    var legacy = service.LoadStereoCalibrationParams(legacyPath);
     Check(double.IsNaN(legacy.MeanReprojectionError), "旧 YAML 缺少均值时显示未知而非零");
     ExpectFailure(() => service.LoadCalibrationParams(Path.Combine(output, "stereo.yaml")), "双目文件不能当作单目内参");
 
@@ -105,7 +220,7 @@ static void RunChecks(string workspace, string output)
     var app = new App();
     app.InitializeComponent();
     SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-    var main = new MainViewModel(new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider());
+    var main = new MainViewModel();
     var distanceVm = new DistanceViewModel(service, distanceService);
     var monoVm = new CalibrationViewModel(service);
     monoVm.ChessboardConfig.SquareSize = 40;
@@ -150,6 +265,7 @@ static void RunChecks(string workspace, string output)
         "更换图片后旧视差、点云和深度失效");
     Console.WriteLine($"真实数据：单目 RMS={mono.ReprojectionError:F4}px，双目 RMS={stereo.ReprojectionError:F4}px，均值={stereo.MeanReprojectionError:F4}px，基线={stereo.Baseline:F3}mm");
     Console.WriteLine($"页面预览与 YAML 输出：{output}");
+    RunErrorFilterChecks(workspace);
     RunUiSmoke(workspace, output);
 }
 
@@ -158,6 +274,11 @@ static void RunChecks(string workspace, string output)
 /// <param name="output">已有验证结果的输出目录。</param>
 static void RunUiSmoke(string workspace, string output)
 {
+    var bindingLog = Path.Combine(output, "ui-bindings.log");
+    File.WriteAllText(bindingLog, string.Empty);
+    using var bindingListener = new TextWriterTraceListener(bindingLog);
+    PresentationTraceSources.DataBindingSource.Listeners.Add(bindingListener);
+    PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Warning;
     if (Application.Current == null)
     {
         var app = new App();
@@ -193,6 +314,7 @@ static void RunUiSmoke(string workspace, string output)
     stereo.SelectedPair = selected;
     stereo.CalibrationResult = service.LoadStereoCalibrationParams(Path.Combine(output, "stereo.yaml"));
     var stereoPage = provider.GetRequiredService<StereoCalibrationPage>();
+    Check(!stereo.CanCalibrate && stereo.CanAnalyze, "不足三对样本时可分析但不可标定");
     RenderPage(stereoPage, Path.Combine(output, "stereo-page.png"));
     SelectTab(stereoPage, "双目校正检查");
     RenderPage(stereoPage, Path.Combine(output, "stereo-rectified.png"));
@@ -203,6 +325,79 @@ static void RunUiSmoke(string workspace, string output)
     distance.IsBusy = true;
     ExpectFailure(() => distance.UseCalibration(stereo.CalibrationResult!), "测距计算中拒绝替换正在使用的校正映射");
     distance.IsBusy = false;
+    var distancePage = provider.GetRequiredService<DistancePage>();
+    Check(distance.HasCalibration && !distance.CanCompute && !distance.CanManualMeasure,
+        "测距输入不足时禁用匹配和手动测距");
+    RenderPage(distancePage, Path.Combine(output, "distance-empty.png"));
+    distance.LeftMat = new Mat(left, ImreadModes.Color);
+    Check(!distance.HasRectifiedPreview, "缺少右图时不显示旧的校正预览");
+    distance.RightMat = new Mat(right, ImreadModes.Color);
+    Check(distance.CanCompute, "左右图片和参数齐全后允许 SGBM");
+    Check(distance.HasRectifiedPreview && !distance.HasDisparity && !distance.HasPointCloud &&
+        distance.RectifiedLeftImage!.PixelWidth == size.Width &&
+        distance.RectifiedRightImage!.PixelHeight == size.Height,
+        "运行 SGBM 前自动生成左右立体校正预览");
+    var preview = distance.RectifiedLeftImage!;
+    var pixelBytes = new byte[(preview.Format.BitsPerPixel + 7) / 8];
+    preview.CopyPixels(new Int32Rect(320, 40, 1, 1), pixelBytes, pixelBytes.Length, 0);
+    var distanceService = provider.GetRequiredService<DistanceService>();
+    var cleanRectified = distanceService.RectifyImages(distance.StereoRectifyParams!, distance.LeftMat!, distance.RightMat!);
+    using (cleanRectified.Left)
+    using (cleanRectified.Right)
+    {
+        var cleanPixel = cleanRectified.Left.At<Vec3b>(40, 320);
+        var originalPixel = distance.LeftMat!.At<Vec3b>(40, 320);
+        Check(pixelBytes[1] > pixelBytes[0] && pixelBytes[1] > pixelBytes[2] &&
+            cleanPixel.Item0 == cleanPixel.Item1 && cleanPixel.Item1 == cleanPixel.Item2 &&
+            originalPixel.Item0 == originalPixel.Item1 && originalPixel.Item1 == originalPixel.Item2,
+            "水平参考线只存在于预览，原图和匹配输入保持灰度颜色");
+    }
+    SelectTab(distancePage, "立体校正检查");
+    RenderPage(distancePage, Path.Combine(output, "distance-rectified.png"));
+    RenderPage(distancePage, Path.Combine(output, "distance-rectified-compact.png"), 836, 600);
+    distance.RightMat = new Mat(10, 10, MatType.CV_8UC3, Scalar.Black);
+    Check(!distance.HasRectifiedPreview && distance.RectifiedLeftImage == null &&
+        distance.RectifiedRightImage == null && distance.RectificationHint.Contains("640"),
+        "更换为尺寸不符的图片后清空两幅校正预览并提示尺寸");
+    distance.RightMat = new Mat(right, ImreadModes.Color);
+    Check(distance.HasRectifiedPreview && !ReferenceEquals(preview, distance.RectifiedLeftImage),
+        "更换有效图片后重新生成当前图片对的校正预览");
+    SelectTab(distancePage, "左右原图");
+    distance.SelectedPoint = new System.Drawing.Point(300, 200);
+    distance.RightSelectedPoint = new System.Drawing.Point(280, 200);
+    distance.LeftPointIsOriginal = true;
+    distance.RightPointIsOriginal = true;
+    distance.MarkerVisible = true;
+    distance.RightMarkerVisible = true;
+    Check(distance.CanManualMeasure && distance.LeftOriginalMarkerVisible && !distance.LeftResultMarkerVisible,
+        "原图对应点齐全后可手动测距且标记只出现在原图");
+    RenderPage(distancePage, Path.Combine(output, "distance-markers-compact.png"), 940, 650);
+    RenderPage(distancePage, Path.Combine(output, "distance-markers.png"));
+    var previousMarkerX = distance.MarkerX;
+    RenderPage(distancePage, Path.Combine(output, "distance-markers-compact.png"), 940, 650);
+    Check(double.IsFinite(distance.MarkerX) && distance.MarkerX != previousMarkerX,
+        "改变窗口尺寸后选点标记随图像重新定位");
+    distance.LeftPointIsOriginal = false;
+    Check(!distance.CanManualMeasure && !distance.LeftOriginalMarkerVisible && distance.LeftResultMarkerVisible,
+        "视差选点不能混入原图手动测距");
+    distance.SetMeasurement(12.5, -8.25, 1000);
+    Check(distance.DepthDisplay == "1000.000" && distance.PointXDisplay == "12.500" &&
+        distance.PointYDisplay == "-8.250", "测量区域同步显示 XYZ");
+    distance.RightMat = new Mat(right, ImreadModes.Color);
+    Check(distance.DepthDisplay == "--" && distance.PointXDisplay == "--" &&
+        !distance.CanManualMeasure && !distance.MarkerVisible, "替换图像清空测量与原图选点");
+    PumpUntil(distance.SgbmComputeCommand.ExecuteAsync(null));
+    Check(distance.HasDisparity && distance.HasPointCloud && distance.HasRectifiedPreview,
+        "测距页匹配完成后保留校正预览并启用 TIFF 导出");
+    RenderPage(distancePage, Path.Combine(output, "distance-originals.png"));
+    SelectTab(distancePage, "视差与深度");
+    RenderPage(distancePage, Path.Combine(output, "distance-depth.png"));
+    RenderPage(distancePage, Path.Combine(output, "distance-compact.png"), 940, 650);
+    var previousRectified = distance.RectifiedLeftImage;
+    distance.UseCalibration(stereo.CalibrationResult!);
+    Check(distance.HasRectifiedPreview && !ReferenceEquals(previousRectified, distance.RectifiedLeftImage) &&
+        !distance.HasDisparity && !distance.HasPointCloud,
+        "重新应用标定参数后刷新校正图并清空旧视差与点云");
     mono.ChessboardConfig.SquareSize = 40;
     mono.DetectedImages.Add(new DetectedImage
     {
@@ -217,7 +412,17 @@ static void RunUiSmoke(string workspace, string output)
     RenderPage(monoPage, Path.Combine(output, "mono-page.png"));
     SelectTab(monoPage, "去畸变检查");
     RenderPage(monoPage, Path.Combine(output, "mono-undistorted.png"));
+    RenderPage(monoPage, Path.Combine(output, "mono-compact.png"), 940, 650);
+    SelectTab(stereoPage, "误差与筛选");
+    RenderPage(stereoPage, Path.Combine(output, "stereo-errors.png"));
+    RenderPage(stereoPage, Path.Combine(output, "stereo-compact.png"), 940, 650);
+    RenderPage(stereoPage, Path.Combine(output, "stereo-minimum.png"), 836, 600);
     Check(mono.UndistortedImage != null, "真实容器生成单目去畸变预览");
+    RenderPage((FrameworkElement)window.Content, Path.Combine(output, "application-shell.png"), 1440, 860);
+    bindingListener.Flush();
+    PresentationTraceSources.DataBindingSource.Listeners.Remove(bindingListener);
+    bindingListener.Close();
+    Check(File.ReadAllText(bindingLog).Length == 0, "三个页面无 WPF 数据绑定错误或警告");
     window.Close();
 }
 
@@ -296,14 +501,16 @@ static void PumpUntil(Task task)
 /// <summary>布局并离屏渲染页面，用于检查 XAML、绑定与布局。</summary>
 /// <param name="page">待渲染页面。</param>
 /// <param name="path">PNG 输出路径。</param>
-static void RenderPage(Page page, string path)
+/// <param name="width">工作区宽度。</param>
+/// <param name="height">工作区高度。</param>
+static void RenderPage(FrameworkElement page, string path, int width = 1280, int height = 860)
 {
-    page.Measure(new System.Windows.Size(1280, 860));
-    page.Arrange(new System.Windows.Rect(0, 0, 1280, 860));
+    page.Measure(new System.Windows.Size(width, height));
+    page.Arrange(new System.Windows.Rect(0, 0, width, height));
     page.UpdateLayout();
     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
     page.UpdateLayout();
-    var bitmap = new RenderTargetBitmap(1280, 860, 96, 96, PixelFormats.Pbgra32);
+    var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
     bitmap.Render(page);
     var encoder = new PngBitmapEncoder();
     encoder.Frames.Add(BitmapFrame.Create(bitmap));

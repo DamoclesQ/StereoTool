@@ -71,19 +71,17 @@ public class DistanceService : IDisposable
     }
 
     /// <summary>
-    /// 计算视差图和三维点云地图
+    /// 对原图进行立体校正后计算视差图和三维点云地图。
     /// </summary>
-    /// <param name="stereoRectifyParams"></param>
-    /// <param name="leftMat"></param>
-    /// <param name="rightMat"></param>
-    /// <returns></returns>
+    /// <param name="stereoRectifyParams">双目标定产生的校正映射和 Q 矩阵。</param>
+    /// <param name="leftMat">左相机原图。</param>
+    /// <param name="rightMat">右相机原图。</param>
+    /// <returns>浮点视差与三通道 XYZ 坐标图，由调用方释放。</returns>
     public (Mat Disparity, Mat MapXYZ) SgbmCompute(StereoRectifyResult stereoRectifyParams, Mat leftMat, Mat rightMat)
     {
-        // ── 应用校正映射 ──
-        using var rectLeft = new Mat();
-        using var rectRight = new Mat();
-        Cv2.Remap(leftMat, rectLeft, stereoRectifyParams.LeftMapX, stereoRectifyParams.LeftMapY, InterpolationFlags.Linear);
-        Cv2.Remap(rightMat, rectRight, stereoRectifyParams.RightMapX, stereoRectifyParams.RightMapY, InterpolationFlags.Linear);
+        var rectified = RectifyImages(stereoRectifyParams, leftMat, rightMat);
+        using var rectLeft = rectified.Left;
+        using var rectRight = rectified.Right;
 
         // ── SGBM 视差计算 ──
         using var sgbm = StereoSGBM.Create(
@@ -114,9 +112,23 @@ public class DistanceService : IDisposable
         return (disparity32F, xyz);
     }
 
-    /// <summary>
-    /// 执行双目立体校正，返回完整的校正参数。
-    /// </summary>
+    /// <summary>按标定映射对左右原图去畸变并进行极线校正，供预览和匹配使用。</summary>
+    /// <param name="rectifyParams">左右相机的校正映射。</param>
+    /// <param name="leftMat">左相机原图。</param>
+    /// <param name="rightMat">右相机原图。</param>
+    /// <returns>不含参考线的左右校正图，由调用方释放。</returns>
+    public (Mat Left, Mat Right) RectifyImages(StereoRectifyResult rectifyParams, Mat leftMat, Mat rightMat)
+    {
+        var left = new Mat();
+        var right = new Mat();
+        Cv2.Remap(leftMat, left, rectifyParams.LeftMapX, rectifyParams.LeftMapY, InterpolationFlags.Linear);
+        Cv2.Remap(rightMat, right, rectifyParams.RightMapX, rectifyParams.RightMapY, InterpolationFlags.Linear);
+        return (left, right);
+    }
+
+    /// <summary>执行双目立体校正，返回完整的校正参数。</summary>
+    /// <param name="calib">双目标定内外参。</param>
+    /// <returns>校正矩阵、Q 矩阵和图像映射。</returns>
     public StereoRectifyResult GetRectifyParams(StereoCalibrationParams calib)
     {
         var leftCam = calib.LeftCameraMatrix.ToMat();

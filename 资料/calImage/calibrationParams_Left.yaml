@@ -4,19 +4,23 @@ CameraMatrix: !!opencv-matrix
    rows: 3
    cols: 3
    dt: d
-   data: [ 912.09359164795001, 0., 292.27067060495722, 0.,
-       920.25683956701255, 248.94351772317069, 0., 0., 1. ]
+   data: [ 912.59384225745077, 0., 291.86296066981561, 0.,
+       920.66707703128441, 248.38785072870942, 0., 0., 1. ]
 DistCoeffs: !!opencv-matrix
    rows: 5
    cols: 1
    dt: d
-   data: [ -0.46092752006153942, 0.61223384215424337,
-       -0.0027233860073297995, -0.0028871317404003975,
-       -1.1809787284340099 ]
+   data: [ -0.45494627686543515, 0.4026716059161442,
+       -0.0018128669107706663, -0.0022784070684460818,
+       -0.21795814530672897 ]
 ImageWidth: 640
 ImageHeight: 480
-ReprojectionError: 0.4079882970615098
+ReprojectionError: 0.31412271039996198
+MeanReprojectionError: 0.26167564769773088
+ImageCount: 33
+EstimateK3: 1
+EstimateTangentialDistortion: 1
 CornerCols: 9
 CornerRows: 6
 SquareSize: 40.
-PixelSizeUm: 2.3999999999999999
+PixelSizeUm: 24.

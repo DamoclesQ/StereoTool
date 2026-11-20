@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// 根据页面名称执行 Frame 导航。
     /// </summary>
+    /// <param name="pageName">已注册的页面标识。</param>
     private void NavigateTo(string pageName)
     {
         Page page = pageName switch
@@ -59,7 +60,7 @@ public partial class MainWindow : Window
             _ => throw new ArgumentException($"未知页面: {pageName}", nameof(pageName))
         };
 
-        MainFrame.Navigate(page);
+        MainFrame.Content = page;
         Debug.WriteLine($"[MainWindow] 导航到: {pageName}");
     }
 }

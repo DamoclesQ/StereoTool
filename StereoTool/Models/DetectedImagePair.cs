@@ -43,9 +43,17 @@ public partial class DetectedImagePair : ObservableObject
 
     /// <summary>该图片对在共同棋盘格位姿下的平均重投影距离，单位为像素。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ErrorBarWidth))]
+    [NotifyPropertyChangedFor(nameof(ChartError))]
     [NotifyPropertyChangedFor(nameof(MeanErrorDisplay))]
     private double _meanError = double.NaN;
+
+    /// <summary>该图片对左右图所有角点中最大的重投影距离，单位为像素。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MaxErrorDisplay))]
+    private double _maxError = double.NaN;
+
+    /// <summary>最大误差显示值，尚无标定结果时显示为未知。</summary>
+    public string MaxErrorDisplay => double.IsFinite(MaxError) ? MaxError.ToString("F4") : "--";
 
     /// <summary>左图平均重投影距离，单位为像素。</summary>
     [ObservableProperty] private double _leftMeanError = double.NaN;
@@ -53,8 +61,8 @@ public partial class DetectedImagePair : ObservableObject
     /// <summary>右图平均重投影距离，单位为像素。</summary>
     [ObservableProperty] private double _rightMeanError = double.NaN;
 
-    /// <summary>误差条宽度，100 显示单位对应 1 像素，最大显示 3 像素。</summary>
-    public double ErrorBarWidth => double.IsFinite(MeanError) ? Math.Min(MeanError * 100, 300) : 0;
+    /// <summary>误差条的数值；尚未计算时为零，比例由页面统一确定。</summary>
+    public double ChartError => double.IsFinite(MeanError) ? MeanError : 0;
 
     /// <summary>尚未标定的记录显示为未知。</summary>
     public string MeanErrorDisplay => double.IsFinite(MeanError) ? MeanError.ToString("F4") : "--";

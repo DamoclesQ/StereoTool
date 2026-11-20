@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Media.Imaging;
@@ -21,7 +22,14 @@ public partial class CalibrationViewModel : ObservableObject
     public ChessboardConfig ChessboardConfig { get; } = new();
 
     /// <summary>包含成功、失败和用户排除图片的数据浏览器。</summary>
-    [ObservableProperty] private ObservableCollection<DetectedImage> _detectedImages = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RemainingMaxErrorDisplay))]
+    [NotifyPropertyChangedFor(nameof(RemainingCount))]
+    [NotifyPropertyChangedFor(nameof(CanAnalyze))]
+    [NotifyPropertyChangedFor(nameof(CanCalibrate))]
+    [NotifyPropertyChangedFor(nameof(WorkflowHint))]
+    [NotifyPropertyChangedFor(nameof(ErrorChartMaximum))]
+    private ObservableCollection<DetectedImage> _detectedImages = [];
 
     /// <summary>当前预览图片。</summary>
     [ObservableProperty] private DetectedImage? _selectedImage;
@@ -36,16 +44,53 @@ public partial class CalibrationViewModel : ObservableObject
     [ObservableProperty] private BitmapSource? _undistortedImage;
 
     /// <summary>是否正在分析或标定。</summary>
-    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAnalyze))]
+    [NotifyPropertyChangedFor(nameof(CanCalibrate))]
+    [NotifyPropertyChangedFor(nameof(WorkflowHint))]
+    private bool _isBusy;
 
     /// <summary>分析进度，范围为 0 到 100。</summary>
     [ObservableProperty] private double _progress;
 
     /// <summary>操作结果和采集提示。</summary>
-    [ObservableProperty] private string _statusText = "设置棋盘格，添加图片后自动分析；建议采集 10～20 张不同位置和倾角的图片。";
+    [ObservableProperty] private string _statusText = "设置棋盘格，依次导入图片、角点分析、标定；建议采集 10～20 张不同位置和倾角的图片。";
 
     /// <summary>用于批量排除的平均误差阈值（像素）。</summary>
     [ObservableProperty] private double _errorThreshold = 1;
+
+    /// <summary>已有图片且空闲时允许分析角点。</summary>
+    public bool CanAnalyze => DetectedImages.Count > 0 && !IsBusy;
+
+    /// <summary>完成分析且至少三张有效样本时允许标定。</summary>
+    public bool CanCalibrate => !IsBusy && RemainingCount >= 3 &&
+        !DetectedImages.Any(image => image.DetectionStatus == "待检测");
+
+    /// <summary>误差条采用统一比例，排除样本仍保留上一轮误差供比较。</summary>
+    public double ErrorChartMaximum => Math.Max(0.1, DetectedImages
+        .Select(image => image.MeanError)
+        .Where(double.IsFinite)
+        .DefaultIfEmpty(0)
+        .Max());
+
+    /// <summary>根据导入、分析、筛选和结果状态提示下一步。</summary>
+    public string WorkflowHint
+    {
+        get
+        {
+            if (IsBusy)
+                return "正在处理，请稍候…";
+            if (HasCalibrationResult)
+                return "04  检查参数与校正效果，确认后导出 YAML";
+            if (DetectedImages.Count == 0)
+                return "01  导入标定图片";
+            if (DetectedImages.Any(image => image.DetectionStatus == "待检测"))
+                return "02  图片已导入，请执行角点分析";
+            if (RemainingCount < 3)
+                return "至少需要 3 张有效样本，请补充图片或恢复选择";
+            return "03  样本已就绪，请标定 / 重新标定";
+        }
+    }
 
     /// <summary>是否存在可导出的当前结果。</summary>
     public bool HasCalibrationResult => CalibrationResult != null;
@@ -53,15 +98,29 @@ public partial class CalibrationViewModel : ObservableObject
     /// <summary>当前数据浏览器统计。</summary>
     public string DatasetSummary => $"共 {DetectedImages.Count} 张 · 检测成功 {DetectedImages.Count(image => image.IsDetected)} 张 · 参与 {DetectedImages.Count(image => image.IsDetected && image.IsIncluded)} 张";
 
+    /// <summary>角点检测成功且仍勾选参与标定的剩余图片数量。</summary>
+    public int RemainingCount => DetectedImages.Count(image => image.IsDetected && image.IsIncluded);
+
+    /// <summary>剩余参与标定图片中列表平均重投影误差的最大值（px）。</summary>
+    public string RemainingMaxErrorDisplay
+    {
+        get
+        {
+            var maximum = DetectedImages
+                .Where(image => image.IsIncluded && image.IsDetected)
+                .Select(image => image.MeanError)
+                .Where(double.IsFinite)
+                .DefaultIfEmpty(double.NaN)
+                .Max();
+            return double.IsFinite(maximum) ? maximum.ToString("F4") : "--";
+        }
+    }
+
     /// <summary>标定全局质量统计；均值和 RMS 分开展示。</summary>
     public string ResultSummary => CalibrationResult == null ? "尚未标定，或数据已改变，请重新标定。" :
         $"图片数 {(CalibrationResult.ImageCount > 0 ? CalibrationResult.ImageCount.ToString() : "文件未记录")} · " +
         $"平均误差 {(double.IsFinite(CalibrationResult.MeanReprojectionError) ? CalibrationResult.MeanReprojectionError.ToString("F4") : "--")} px · " +
         $"RMS {CalibrationResult.ReprojectionError:F4} px";
-
-    /// <summary>以毫米表示的物理焦距。</summary>
-    public string FocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.CameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "未提供像元尺寸";
 
     /// <summary>创建页面并监听配置内部属性的变化。</summary>
     /// <param name="calibrationService">标定与图片分析服务。</param>
@@ -69,15 +128,20 @@ public partial class CalibrationViewModel : ObservableObject
     {
         _calibrationService = calibrationService;
         ChessboardConfig.PropertyChanged += OnConfigChanged;
+        DetectedImages.CollectionChanged += OnRecordsChanged;
     }
 
     /// <summary>结果变化时刷新统计和图像。</summary>
     /// <param name="value">当前结果。</param>
     partial void OnCalibrationResultChanged(CalibrationParams? value)
     {
+        if (value != null)
+        {
+            ChessboardConfig.PixelSizeUm = value.PixelSizeUm;
+        }
         OnPropertyChanged(nameof(HasCalibrationResult));
+        OnPropertyChanged(nameof(WorkflowHint));
         OnPropertyChanged(nameof(ResultSummary));
-        OnPropertyChanged(nameof(FocalMm));
         UpdatePreview();
     }
 
@@ -88,11 +152,17 @@ public partial class CalibrationViewModel : ObservableObject
         UpdatePreview();
     }
 
-    /// <summary>设置变化后使结果失效；只有角点行列变化需要重新检测。</summary>
+    /// <summary>标定设置变化后使结果失效；像元尺寸仅更新导出元数据。</summary>
     /// <param name="sender">配置对象。</param>
     /// <param name="e">变更字段。</param>
     private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ChessboardConfig.PixelSizeUm))
+        {
+            if (CalibrationResult != null)
+                CalibrationResult.PixelSizeUm = ChessboardConfig.PixelSizeUm;
+            return;
+        }
         if (e.PropertyName is nameof(ChessboardConfig.CornerCols) or nameof(ChessboardConfig.CornerRows))
         {
             ReplaceImages(DetectedImages.Select(image => new DetectedImage { ImagePath = image.ImagePath }).ToList());
@@ -101,16 +171,53 @@ public partial class CalibrationViewModel : ObservableObject
         StatusText = "配置已改变，请重新标定；内角点行列变化后需重新分析。";
     }
 
+    /// <summary>替换数据集时统一维护记录订阅，避免列表统计与操作状态脱节。</summary>
+    /// <param name="oldValue">原数据集。</param>
+    /// <param name="newValue">新数据集。</param>
+    partial void OnDetectedImagesChanged(ObservableCollection<DetectedImage>? oldValue, ObservableCollection<DetectedImage> newValue)
+    {
+        if (oldValue != null)
+        {
+            oldValue.CollectionChanged -= OnRecordsChanged;
+            foreach (var image in oldValue)
+                image.PropertyChanged -= OnImageChanged;
+        }
+        newValue.CollectionChanged += OnRecordsChanged;
+        foreach (var image in newValue)
+            image.PropertyChanged += OnImageChanged;
+        OnPropertyChanged(nameof(DatasetSummary));
+    }
+
+    /// <summary>增删记录后刷新列表统计及工作流提示。</summary>
+    /// <param name="sender">数据集。</param>
+    /// <param name="e">增删记录。</param>
+    private void OnRecordsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (DetectedImage image in e.OldItems)
+                image.PropertyChanged -= OnImageChanged;
+        }
+        if (e.NewItems != null)
+        {
+            foreach (DetectedImage image in e.NewItems)
+                image.PropertyChanged += OnImageChanged;
+        }
+        OnPropertyChanged(nameof(DatasetSummary));
+        OnPropertyChanged(nameof(RemainingCount));
+        OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
+        OnPropertyChanged(nameof(ErrorChartMaximum));
+        OnPropertyChanged(nameof(CanAnalyze));
+        OnPropertyChanged(nameof(CanCalibrate));
+        OnPropertyChanged(nameof(WorkflowHint));
+    }
+
     /// <summary>更新图片浏览器并订阅参与选项。</summary>
     /// <param name="images">全部图片记录。</param>
     private void ReplaceImages(IEnumerable<DetectedImage> images)
     {
-        foreach (var image in DetectedImages)
-            image.PropertyChanged -= OnImageChanged;
         SelectedImage = null;
         DetectedImages = new ObservableCollection<DetectedImage>(images);
-        foreach (var image in DetectedImages)
-            image.PropertyChanged += OnImageChanged;
         OnPropertyChanged(nameof(DatasetSummary));
         SelectedImage = DetectedImages.FirstOrDefault();
     }
@@ -120,10 +227,20 @@ public partial class CalibrationViewModel : ObservableObject
     /// <param name="e">变更字段。</param>
     private void OnImageChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DetectedImage.MeanError))
+        {
+            OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
+            OnPropertyChanged(nameof(ErrorChartMaximum));
+            return;
+        }
         if (e.PropertyName != nameof(DetectedImage.IsIncluded))
             return;
         InvalidateResult(false);
         OnPropertyChanged(nameof(DatasetSummary));
+        OnPropertyChanged(nameof(RemainingCount));
+        OnPropertyChanged(nameof(CanCalibrate));
+        OnPropertyChanged(nameof(WorkflowHint));
+        OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
         StatusText = "参与图片已改变，请重新标定。误差条保留上一轮结果供筛选。";
     }
 
@@ -135,15 +252,18 @@ public partial class CalibrationViewModel : ObservableObject
         {
             image.ProjectedCorners = [];
             if (clearErrors)
+            {
                 image.MeanError = double.NaN;
+                image.MaxError = double.NaN;
+            }
         }
         CalibrationResult = null;
         UpdatePreview();
     }
 
-    /// <summary>从文件夹追加图片，跳过重复路径，并自动分析全部图片。</summary>
+    /// <summary>从文件夹导入图片，跳过重复路径，等待用户执行角点分析。</summary>
     [RelayCommand]
-    private async Task ImportImagesAsync()
+    private void ImportImages()
     {
         var dialog = new OpenFolderDialog { Title = "添加单目标定图片文件夹" };
         if (dialog.ShowDialog() != true)
@@ -153,8 +273,14 @@ public partial class CalibrationViewModel : ObservableObject
             var paths = DetectedImages.Select(image => image.ImagePath)
                 .Concat(_calibrationService.GetImagePaths(dialog.FolderName))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            ReplaceImages(paths.Select(path => new DetectedImage { ImagePath = path }));
-            await DetectCornersAsync(CancellationToken.None);
+            InvalidateResult(true);
+            ReplaceImages(paths.Select(path => new DetectedImage
+            {
+                ImagePath = path,
+                IsIncluded = false
+            }));
+            Progress = 0;
+            StatusText = $"已导入 {DetectedImages.Count} 张图片，请点击“角点分析”，完成后再标定。";
         }
         catch (Exception ex)
         {
@@ -216,6 +342,11 @@ public partial class CalibrationViewModel : ObservableObject
     [RelayCommand]
     private async Task StartCalibrationAsync()
     {
+        if (DetectedImages.Any(image => image.DetectionStatus == "待检测"))
+        {
+            StatusText = "请先完成角点分析，再进行标定。";
+            return;
+        }
         var images = DetectedImages.Where(image => image.IsIncluded && image.IsDetected)
             .Select(image => new DetectedImage
             {
@@ -233,6 +364,7 @@ public partial class CalibrationViewModel : ObservableObject
             {
                 var target = DetectedImages.First(item => item.ImagePath == image.ImagePath);
                 target.MeanError = image.MeanError;
+                target.MaxError = image.MaxError;
                 target.ProjectedCorners = image.ProjectedCorners;
             }
             CalibrationResult = result;
@@ -257,6 +389,15 @@ public partial class CalibrationViewModel : ObservableObject
         foreach (var image in images)
             image.IsIncluded = false;
         StatusText = $"已排除 {images.Count} 张图片，请重新标定；可通过“参与”复选框恢复。";
+    }
+
+    /// <summary>恢复所有角点检测成功图片的参与勾选，失败及待检测图片保持不参与。</summary>
+    [RelayCommand]
+    private void RestoreSelectAll()
+    {
+        foreach (var image in DetectedImages)
+            image.IsIncluded = image.IsDetected;
+        StatusText = $"已恢复全选，剩余参与标定 {RemainingCount} 张有效图片，可重新标定。";
     }
 
     /// <summary>从当前数据集移除指定记录，不删除磁盘文件。</summary>

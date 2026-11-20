@@ -81,7 +81,7 @@ public partial class StereoCalibrationParams : ObservableObject
     /// <summary>棋盘格每格物理尺寸（单位：mm），用于像素坐标到物理坐标的换算</summary>
     [ObservableProperty] private double _squareSize;
 
-    /// <summary>相机传感器像元尺寸（单位：μm），用于将像素焦距换算为物理焦距（mm）。设为 0 表示未提供。</summary>
+    /// <summary>相机传感器像元尺寸元数据（μm），保留用于 YAML 兼容；不参与标定求解。</summary>
     [ObservableProperty] private double _pixelSizeUm;
 
     /// <summary>标定图像的宽度（像素）</summary>

@@ -19,9 +19,9 @@ public partial class ChessboardConfig : ObservableObject
     [ObservableProperty]
     private double _squareSize = 20.0;
 
-    /// <summary>相机传感器像元尺寸（单位：微米 μm）。用于将像素焦距换算为物理焦距（mm）。设为 0 表示未提供。</summary>
+    /// <summary>相机传感器像元尺寸元数据，默认 24 μm，保留用于 YAML 兼容；不参与标定求解。</summary>
     [ObservableProperty]
-    private double _pixelSizeUm = 0.0;
+    private double _pixelSizeUm = 24.0;
 
     /// <summary>是否估计第三个径向畸变系数；默认使用 k1、k2。</summary>
     [ObservableProperty]

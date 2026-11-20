@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
@@ -73,6 +73,47 @@ public partial class DistancePage : Page
             clickPos.X < offsetX + renderedW && clickPos.Y < offsetY + renderedH;
     }
 
+    /// <summary>工作区尺寸改变后，按当前图像缩放比例重新定位选点标记。</summary>
+    /// <param name="sender">尺寸变化的图像画布。</param>
+    /// <param name="e">尺寸变化事件。</param>
+    private void ImageCanvas_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
+    {
+        if (sender is not Canvas canvas || DataContext is not DistanceViewModel vm)
+            return;
+
+        var left = canvas == LeftImageCanvas || canvas == DisparityImageCanvas;
+        var original = canvas == LeftImageCanvas || canvas == RightImageCanvas;
+        var visible = left
+            ? vm.MarkerVisible && vm.LeftPointIsOriginal == original
+            : vm.RightMarkerVisible && vm.RightPointIsOriginal == original;
+        if (!visible || canvas.ActualWidth <= 0 || canvas.ActualHeight <= 0)
+            return;
+
+        BitmapSource? bitmap = canvas.Name switch
+        {
+            nameof(LeftImageCanvas) => vm.LeftImage,
+            nameof(RightImageCanvas) => vm.RightImage,
+            nameof(DisparityImageCanvas) => vm.DisparityImage,
+            nameof(ZImageCanvas) => vm.ZImage,
+            _ => null
+        };
+        if (bitmap == null)
+            return;
+
+        var point = left ? vm.SelectedPoint : vm.RightSelectedPoint;
+        var scale = Math.Min(canvas.ActualWidth / bitmap.PixelWidth, canvas.ActualHeight / bitmap.PixelHeight);
+        var x = point.X * scale + (canvas.ActualWidth - bitmap.PixelWidth * scale) / 2 - 7;
+        var y = point.Y * scale + (canvas.ActualHeight - bitmap.PixelHeight * scale) / 2 - 7;
+        if (left)
+        {
+            vm.MarkerX = x;
+            vm.MarkerY = y;
+            return;
+        }
+        vm.RightMarkerX = x;
+        vm.RightMarkerY = y;
+    }
+
     /// <summary>
     /// 左图像 Canvas 上的鼠标点击事件处理。
     /// 将用户点击的 Canvas 坐标转换为图像坐标系下的像素坐标，
@@ -109,7 +150,7 @@ public partial class DistancePage : Page
 
         if (z <= 0 || double.IsNaN(z) || double.IsInfinity(z))
             z = double.NaN;
-        vm.DistanceResult = z;
+        vm.SetMeasurement(x, y, z);
 
         vm.StatusText = $"测量点已选择({pixelX}, {pixelY}): (x, y, z)=({x:F3}, {y:F3}, {z:F3})";
     }
@@ -139,9 +180,13 @@ public partial class DistancePage : Page
         vm.RightMarkerX = pixelX * scale + offsetX - 7;
         vm.RightMarkerY = pixelY * scale + offsetY - 7;
         vm.RightMarkerVisible = true;
+        vm.SetMeasurement(double.NaN, double.NaN, double.NaN);
         vm.StatusText = $"右图测量点已选择：({pixelX}, {pixelY}) — 左右点就绪后可执行手动测距";
     }
 
+    /// <summary>读取校正视差图中的像素视差及三维坐标。</summary>
+    /// <param name="sender">视差图画布。</param>
+    /// <param name="e">鼠标事件。</param>
     private void DisparityImage_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not DistanceViewModel vm)
@@ -168,10 +213,15 @@ public partial class DistancePage : Page
 
         // 从 XYZ 缓存直接读取距离值
         double d = vm.GetDisparity(pixelX, pixelY);
+        var (x, y, z) = vm.GetXYZ(pixelX, pixelY);
+        vm.SetMeasurement(x, y, z);
         
         vm.StatusText = $"测量点已选择：({pixelX}, {pixelY}), 视差：{d}";
     }
 
+    /// <summary>读取校正深度图中的三维坐标。</summary>
+    /// <param name="sender">深度图画布。</param>
+    /// <param name="e">鼠标事件。</param>
     private void ZImage_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not DistanceViewModel vm)
@@ -198,7 +248,7 @@ public partial class DistancePage : Page
 
         if (z <= 0 || double.IsNaN(z) || double.IsInfinity(z))
             z = double.NaN;
-        vm.DistanceResult = z;
+        vm.SetMeasurement(x, y, z);
 
         vm.StatusText = $"3D点云图已选择点({pixelX}, {pixelY}): (x, y, z)=({x:F3}, {y:F3}, {z:F3})";
     }

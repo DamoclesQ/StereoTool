@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Media.Imaging;
@@ -28,7 +29,14 @@ public partial class StereoCalibrationViewModel : ObservableObject
     public ChessboardConfig ChessboardConfig { get; } = new();
 
     /// <summary>全部图片对，包含缺图、检测失败及被排除的记录。</summary>
-    [ObservableProperty] private ObservableCollection<DetectedImagePair> _imagePairs = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RemainingMaxErrorDisplay))]
+    [NotifyPropertyChangedFor(nameof(RemainingCount))]
+    [NotifyPropertyChangedFor(nameof(CanAnalyze))]
+    [NotifyPropertyChangedFor(nameof(CanCalibrate))]
+    [NotifyPropertyChangedFor(nameof(WorkflowHint))]
+    [NotifyPropertyChangedFor(nameof(ErrorChartMaximum))]
+    private ObservableCollection<DetectedImagePair> _imagePairs = [];
 
     /// <summary>当前检查的图片对。</summary>
     [ObservableProperty] private DetectedImagePair? _selectedPair;
@@ -37,7 +45,10 @@ public partial class StereoCalibrationViewModel : ObservableObject
     [ObservableProperty] private StereoCalibrationParams? _calibrationResult;
 
     /// <summary>是否使用导入的固定左右内参。</summary>
-    [ObservableProperty] private bool _useFixedIntrinsics;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCalibrate))]
+    [NotifyPropertyChangedFor(nameof(WorkflowHint))]
+    private bool _useFixedIntrinsics;
 
     /// <summary>固定内参来源。</summary>
     [ObservableProperty] private string _intrinsicsSummary = "联合估计左右内参和双目外参";
@@ -51,16 +62,56 @@ public partial class StereoCalibrationViewModel : ObservableObject
     [ObservableProperty] private BitmapSource? _rectifiedRightImage;
 
     /// <summary>是否正在分析或标定。</summary>
-    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAnalyze))]
+    [NotifyPropertyChangedFor(nameof(CanCalibrate))]
+    [NotifyPropertyChangedFor(nameof(WorkflowHint))]
+    private bool _isBusy;
 
     /// <summary>分析进度。</summary>
     [ObservableProperty] private double _progress;
 
     /// <summary>操作状态。</summary>
-    [ObservableProperty] private string _statusText = "设置棋盘格，添加左右文件夹后自动配对分析；建议使用 10～20 对图片。";
+    [ObservableProperty] private string _statusText = "设置棋盘格，分别导入左右图片，再进行角点分析和标定；建议使用 10～20 对图片。";
 
     /// <summary>平均重投影误差的排除阈值（像素）。</summary>
     [ObservableProperty] private double _errorThreshold = 1;
+
+    /// <summary>已有图片且空闲时允许分析角点。</summary>
+    public bool CanAnalyze => ImagePairs.Count > 0 && !IsBusy;
+
+    /// <summary>完成分析且至少三对有效样本时允许标定。</summary>
+    public bool CanCalibrate => !IsBusy && RemainingCount >= 3 &&
+        !ImagePairs.Any(pair => pair.DetectionStatus == "待检测") &&
+        (!UseFixedIntrinsics || (_fixedLeft != null && _fixedRight != null));
+
+    /// <summary>误差条采用统一比例，排除样本仍保留上一轮误差供比较。</summary>
+    public double ErrorChartMaximum => Math.Max(0.1, ImagePairs
+        .Select(pair => pair.MeanError)
+        .Where(double.IsFinite)
+        .DefaultIfEmpty(0)
+        .Max());
+
+    /// <summary>根据导入、分析、筛选和结果状态提示下一步。</summary>
+    public string WorkflowHint
+    {
+        get
+        {
+            if (IsBusy)
+                return "正在处理，请稍候…";
+            if (HasCalibrationResult)
+                return "04  检查参数与校正效果，确认后导出 YAML";
+            if (ImagePairs.Count == 0)
+                return "01  导入左右图片，按文件名配对";
+            if (ImagePairs.Any(pair => pair.DetectionStatus == "待检测"))
+                return "02  图片已导入，请执行角点分析";
+            if (RemainingCount < 3)
+                return "至少需要 3 对有效样本，请补充图片或恢复选择";
+            if (UseFixedIntrinsics && (_fixedLeft == null || _fixedRight == null))
+                return "请先导入左右单目 YAML，提供固定内参";
+            return "03  样本已就绪，请标定 / 重新标定";
+        }
+    }
 
     /// <summary>是否存在可导出的有效结果。</summary>
     public bool HasCalibrationResult => CalibrationResult != null;
@@ -69,21 +120,44 @@ public partial class StereoCalibrationViewModel : ObservableObject
     public bool CanEditDistortion => !UseFixedIntrinsics;
 
     /// <summary>图片对统计。</summary>
-    public string DatasetSummary => $"共 {ImagePairs.Count} 对 · 检测成功 {ImagePairs.Count(pair => pair.IsDetected)} 对 · 参与 {ImagePairs.Count(pair => pair.IsDetected && pair.IsIncluded)} 对";
+    public string DatasetSummary
+    {
+        get
+        {
+            var leftCount = ImagePairs.Count(pair => !string.IsNullOrEmpty(pair.LeftPath));
+            var rightCount = ImagePairs.Count(pair => !string.IsNullOrEmpty(pair.RightPath));
+            var pairedCount = ImagePairs.Count(pair =>
+                !string.IsNullOrEmpty(pair.LeftPath) && !string.IsNullOrEmpty(pair.RightPath));
+            var detectedCount = ImagePairs.Count(pair => pair.IsDetected);
+            var includedCount = ImagePairs.Count(pair => pair.IsDetected && pair.IsIncluded);
+            return $"左图 {leftCount} 张 · 右图 {rightCount} 张 · 已配对 {pairedCount} 对 · " +
+                $"检测成功 {detectedCount} 对 · 参与 {includedCount} 对";
+        }
+    }
+
+    /// <summary>左右角点均检测成功且仍勾选参与标定的剩余图片对数量。</summary>
+    public int RemainingCount => ImagePairs.Count(pair => pair.IsDetected && pair.IsIncluded);
+
+    /// <summary>剩余参与标定图片对中列表平均重投影误差的最大值（px）。</summary>
+    public string RemainingMaxErrorDisplay
+    {
+        get
+        {
+            var maximum = ImagePairs
+                .Where(pair => pair.IsIncluded && pair.IsDetected)
+                .Select(pair => pair.MeanError)
+                .Where(double.IsFinite)
+                .DefaultIfEmpty(double.NaN)
+                .Max();
+            return double.IsFinite(maximum) ? maximum.ToString("F4") : "--";
+        }
+    }
 
     /// <summary>整体质量统计。</summary>
     public string ResultSummary => CalibrationResult == null ? "尚未标定，或数据已改变，请重新标定。" :
         $"图片对数 {(CalibrationResult.ImageCount > 0 ? CalibrationResult.ImageCount.ToString() : "文件未记录")} · " +
         $"平均误差 {(double.IsFinite(CalibrationResult.MeanReprojectionError) ? CalibrationResult.MeanReprojectionError.ToString("F4") : "--")} px · " +
         $"RMS {CalibrationResult.ReprojectionError:F4} px · 基线 {CalibrationResult.Baseline:F3} mm";
-
-    /// <summary>左相机的物理焦距。</summary>
-    public string LeftFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.LeftCameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "--";
-
-    /// <summary>右相机的物理焦距。</summary>
-    public string RightFocalMm => CalibrationResult != null && CalibrationResult.PixelSizeUm > 0
-        ? $"{CalibrationResult.RightCameraMatrix[0, 0] * CalibrationResult.PixelSizeUm / 1000:F3} mm" : "--";
 
     /// <summary>创建页面并注入测距页面用于接收当前结果。</summary>
     /// <param name="calibrationService">标定服务。</param>
@@ -98,6 +172,7 @@ public partial class StereoCalibrationViewModel : ObservableObject
         _distanceViewModel = distanceViewModel;
         _mainViewModel = mainViewModel;
         ChessboardConfig.PropertyChanged += OnConfigChanged;
+        ImagePairs.CollectionChanged += OnRecordsChanged;
     }
 
     /// <summary>切换内参模式后重新标定。</summary>
@@ -113,12 +188,15 @@ public partial class StereoCalibrationViewModel : ObservableObject
     /// <param name="value">当前结果。</param>
     partial void OnCalibrationResultChanged(StereoCalibrationParams? value)
     {
+        if (value != null)
+        {
+            ChessboardConfig.PixelSizeUm = value.PixelSizeUm;
+        }
         _previewRectify?.Dispose();
         _previewRectify = null;
         OnPropertyChanged(nameof(HasCalibrationResult));
+        OnPropertyChanged(nameof(WorkflowHint));
         OnPropertyChanged(nameof(ResultSummary));
-        OnPropertyChanged(nameof(LeftFocalMm));
-        OnPropertyChanged(nameof(RightFocalMm));
         UpdatePreview();
     }
 
@@ -129,11 +207,17 @@ public partial class StereoCalibrationViewModel : ObservableObject
         UpdatePreview();
     }
 
-    /// <summary>配置变化时使旧参数失效，内角点行列变化时重新检测。</summary>
+    /// <summary>标定配置变化时使旧参数失效；像元尺寸仅更新导出元数据。</summary>
     /// <param name="sender">配置对象。</param>
     /// <param name="e">变更字段。</param>
     private void OnConfigChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ChessboardConfig.PixelSizeUm))
+        {
+            if (CalibrationResult != null)
+                CalibrationResult.PixelSizeUm = ChessboardConfig.PixelSizeUm;
+            return;
+        }
         if (e.PropertyName is nameof(ChessboardConfig.CornerCols) or nameof(ChessboardConfig.CornerRows))
         {
             ReplacePairs(ImagePairs.Select(pair => new DetectedImagePair
@@ -146,16 +230,53 @@ public partial class StereoCalibrationViewModel : ObservableObject
         StatusText = "配置已改变，请重新标定；内角点行列变化后需重新分析。";
     }
 
+    /// <summary>替换数据集时统一维护记录订阅，避免列表统计与操作状态脱节。</summary>
+    /// <param name="oldValue">原数据集。</param>
+    /// <param name="newValue">新数据集。</param>
+    partial void OnImagePairsChanged(ObservableCollection<DetectedImagePair>? oldValue, ObservableCollection<DetectedImagePair> newValue)
+    {
+        if (oldValue != null)
+        {
+            oldValue.CollectionChanged -= OnRecordsChanged;
+            foreach (var pair in oldValue)
+                pair.PropertyChanged -= OnPairChanged;
+        }
+        newValue.CollectionChanged += OnRecordsChanged;
+        foreach (var pair in newValue)
+            pair.PropertyChanged += OnPairChanged;
+        OnPropertyChanged(nameof(DatasetSummary));
+    }
+
+    /// <summary>增删记录后刷新列表统计及工作流提示。</summary>
+    /// <param name="sender">数据集。</param>
+    /// <param name="e">增删记录。</param>
+    private void OnRecordsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (DetectedImagePair pair in e.OldItems)
+                pair.PropertyChanged -= OnPairChanged;
+        }
+        if (e.NewItems != null)
+        {
+            foreach (DetectedImagePair pair in e.NewItems)
+                pair.PropertyChanged += OnPairChanged;
+        }
+        OnPropertyChanged(nameof(DatasetSummary));
+        OnPropertyChanged(nameof(RemainingCount));
+        OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
+        OnPropertyChanged(nameof(ErrorChartMaximum));
+        OnPropertyChanged(nameof(CanAnalyze));
+        OnPropertyChanged(nameof(CanCalibrate));
+        OnPropertyChanged(nameof(WorkflowHint));
+    }
+
     /// <summary>发布浏览器记录并监听参与选项。</summary>
     /// <param name="pairs">全部图片对。</param>
     private void ReplacePairs(IEnumerable<DetectedImagePair> pairs)
     {
-        foreach (var pair in ImagePairs)
-            pair.PropertyChanged -= OnPairChanged;
         SelectedPair = null;
         ImagePairs = new ObservableCollection<DetectedImagePair>(pairs);
-        foreach (var pair in ImagePairs)
-            pair.PropertyChanged += OnPairChanged;
         OnPropertyChanged(nameof(DatasetSummary));
         SelectedPair = ImagePairs.FirstOrDefault();
     }
@@ -165,10 +286,20 @@ public partial class StereoCalibrationViewModel : ObservableObject
     /// <param name="e">变更字段。</param>
     private void OnPairChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DetectedImagePair.MeanError))
+        {
+            OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
+            OnPropertyChanged(nameof(ErrorChartMaximum));
+            return;
+        }
         if (e.PropertyName != nameof(DetectedImagePair.IsIncluded))
             return;
         InvalidateResult(false);
         OnPropertyChanged(nameof(DatasetSummary));
+        OnPropertyChanged(nameof(RemainingCount));
+        OnPropertyChanged(nameof(CanCalibrate));
+        OnPropertyChanged(nameof(WorkflowHint));
+        OnPropertyChanged(nameof(RemainingMaxErrorDisplay));
         StatusText = "参与图片对已改变，请重新标定。误差条保留上一轮结果供筛选。";
     }
 
@@ -183,6 +314,7 @@ public partial class StereoCalibrationViewModel : ObservableObject
             if (!clearErrors)
                 continue;
             pair.MeanError = double.NaN;
+            pair.MaxError = double.NaN;
             pair.LeftMeanError = double.NaN;
             pair.RightMeanError = double.NaN;
         }
@@ -190,28 +322,61 @@ public partial class StereoCalibrationViewModel : ObservableObject
         UpdatePreview();
     }
 
-    /// <summary>一次选择左右文件夹，按名称配对并追加，随后自动检测。</summary>
+    /// <summary>单独导入左相机图片，保留已导入右图并重新配对，不执行角点分析。</summary>
     [RelayCommand]
-    private async Task ImportImagePairsAsync()
+    private void ImportLeftImages()
     {
-        var leftDialog = new OpenFolderDialog { Title = "添加图片对：选择左相机文件夹" };
-        if (leftDialog.ShowDialog() != true)
-            return;
-        var rightDialog = new OpenFolderDialog { Title = "添加图片对：选择右相机文件夹" };
-        if (rightDialog.ShowDialog() != true)
+        var dialog = new OpenFolderDialog { Title = "导入左相机图片文件夹" };
+        if (dialog.ShowDialog() != true)
             return;
         try
         {
-            var added = _calibrationService.PairImages(_calibrationService.GetImagePaths(leftDialog.FolderName),
-                _calibrationService.GetImagePaths(rightDialog.FolderName));
-            var pairs = ImagePairs.Concat(added)
-                .DistinctBy(pair => (pair.LeftPath.ToUpperInvariant(), pair.RightPath.ToUpperInvariant())).ToList();
+            var leftPaths = ImagePairs.Select(pair => pair.LeftPath)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .Concat(_calibrationService.GetImagePaths(dialog.FolderName))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var rightPaths = ImagePairs.Select(pair => pair.RightPath)
+                .Where(path => !string.IsNullOrEmpty(path)).ToList();
+            var pairs = _calibrationService.PairImages(leftPaths, rightPaths);
+            foreach (var pair in pairs)
+                pair.IsIncluded = false;
+            InvalidateResult(true);
             ReplacePairs(pairs);
-            await DetectCornersAsync(CancellationToken.None);
+            Progress = 0;
+            StatusText = $"左图已导入。{DatasetSummary}。左右图就绪后请点击“角点分析”。";
         }
         catch (Exception ex)
         {
-            StatusText = $"添加失败：{ex.Message}。请检查是否有重名编号及 left/right 命名。";
+            StatusText = $"左图导入失败：{ex.Message}。请检查是否有重名编号及 left/right 命名。";
+        }
+    }
+
+    /// <summary>单独导入右相机图片，保留已导入左图并重新配对，不执行角点分析。</summary>
+    [RelayCommand]
+    private void ImportRightImages()
+    {
+        var dialog = new OpenFolderDialog { Title = "导入右相机图片文件夹" };
+        if (dialog.ShowDialog() != true)
+            return;
+        try
+        {
+            var leftPaths = ImagePairs.Select(pair => pair.LeftPath)
+                .Where(path => !string.IsNullOrEmpty(path)).ToList();
+            var rightPaths = ImagePairs.Select(pair => pair.RightPath)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .Concat(_calibrationService.GetImagePaths(dialog.FolderName))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var pairs = _calibrationService.PairImages(leftPaths, rightPaths);
+            foreach (var pair in pairs)
+                pair.IsIncluded = false;
+            InvalidateResult(true);
+            ReplacePairs(pairs);
+            Progress = 0;
+            StatusText = $"右图已导入。{DatasetSummary}。左右图就绪后请点击“角点分析”。";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"右图导入失败：{ex.Message}。请检查是否有重名编号及 left/right 命名。";
         }
     }
 
@@ -269,6 +434,11 @@ public partial class StereoCalibrationViewModel : ObservableObject
     [RelayCommand]
     private async Task StartCalibrationAsync()
     {
+        if (ImagePairs.Any(pair => pair.DetectionStatus == "待检测"))
+        {
+            StatusText = "请先完成角点分析，再进行标定。";
+            return;
+        }
         var pairs = ImagePairs.Where(pair => pair.IsIncluded && pair.IsDetected)
             .Select(pair => new DetectedImagePair
             {
@@ -291,6 +461,7 @@ public partial class StereoCalibrationViewModel : ObservableObject
             {
                 var target = ImagePairs.First(item => item.LeftPath == pair.LeftPath && item.RightPath == pair.RightPath);
                 target.MeanError = pair.MeanError;
+                target.MaxError = pair.MaxError;
                 target.LeftMeanError = pair.LeftMeanError;
                 target.RightMeanError = pair.RightMeanError;
                 target.LeftProjectedCorners = pair.LeftProjectedCorners;
@@ -329,6 +500,8 @@ public partial class StereoCalibrationViewModel : ObservableObject
             UseFixedIntrinsics = true;
             InvalidateResult(true);
             IntrinsicsSummary = $"左：{Path.GetFileName(leftDialog.FileName)} / 右：{Path.GetFileName(rightDialog.FileName)}";
+            OnPropertyChanged(nameof(CanCalibrate));
+            OnPropertyChanged(nameof(WorkflowHint));
             StatusText = "固定内参已导入。标定只求双目外参，图片尺寸必须与内参文件一致。";
         }
         catch (Exception ex)
@@ -345,6 +518,15 @@ public partial class StereoCalibrationViewModel : ObservableObject
         foreach (var pair in pairs)
             pair.IsIncluded = false;
         StatusText = $"已排除 {pairs.Count} 对，请重新标定；可勾选“参与”恢复。";
+    }
+
+    /// <summary>恢复所有角点检测成功图片对的参与勾选，缺图及检测失败记录保持不参与。</summary>
+    [RelayCommand]
+    private void RestoreSelectAll()
+    {
+        foreach (var pair in ImagePairs)
+            pair.IsIncluded = pair.IsDetected;
+        StatusText = $"已恢复全选，剩余参与标定 {RemainingCount} 对有效图片，可重新标定。";
     }
 
     /// <summary>从数据集移除记录，不删除原图。</summary>
